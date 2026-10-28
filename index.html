@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#020617">
+  <title>UsTwo — Couples Connection &amp; Intimacy</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <!-- Tailwind Play CDN is fine for prototyping; switch to a build step before production. -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;1,600&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+    .serif { font-family: 'Playfair Display', serif; }
+    .card-flip { transition: transform 0.3s ease, box-shadow 0.3s ease; }
+    .card-flip:hover { transform: translateY(-2px); }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen pb-28">
+
+  <!-- Top bar -->
+  <header class="sticky top-0 z-20 bg-slate-900/90 backdrop-blur border-b border-slate-800 px-4 py-3">
+    <div class="max-w-md mx-auto flex items-center justify-between gap-2">
+      <div>
+        <h1 class="serif text-xl text-rose-400 tracking-wide">UsTwo</h1>
+        <p id="syncLabel" class="text-xs text-slate-400">Daily Connection Space</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <!-- Partner switcher: only in single-device demo mode -->
+        <div id="partnerSwitcher" class="flex items-center gap-1 bg-slate-800 p-1 rounded-full border border-slate-700">
+          <button id="btnPartnerA" class="px-3 py-1 rounded-full text-xs font-medium transition">Partner A</button>
+          <button id="btnPartnerB" class="px-3 py-1 rounded-full text-xs font-medium transition">Partner B</button>
+        </div>
+        <button id="btnSettings" aria-label="Pairing and settings" class="w-9 h-9 rounded-full bg-slate-800 border border-slate-700 hover:border-rose-500/60 text-sm">💞</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-md mx-auto px-4 pt-6 space-y-6">
+
+    <!-- Pulse -->
+    <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg">
+      <div class="flex justify-between items-center mb-3">
+        <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Current Pulse &amp; Bandwidth</h2>
+        <span class="text-xs text-rose-400" id="activePartnerLabel"></span>
+      </div>
+      <div class="grid grid-cols-2 gap-3 mb-4">
+        <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-800/80">
+          <p id="vibeLabelA" class="text-xs text-slate-400 mb-1"></p>
+          <p id="statusA" class="text-sm font-medium text-emerald-400"></p>
+        </div>
+        <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-800/80">
+          <p id="vibeLabelB" class="text-xs text-slate-400 mb-1"></p>
+          <p id="statusB" class="text-sm font-medium text-amber-400"></p>
+        </div>
+      </div>
+      <div id="vibeButtons" class="flex gap-2 overflow-x-auto no-scrollbar pb-1 text-xs"></div>
+    </section>
+
+    <!-- Daily Sync -->
+    <div id="tab-daily" class="space-y-4">
+      <div class="bg-gradient-to-br from-rose-950/50 via-slate-900 to-slate-900 border border-rose-500/30 rounded-2xl p-5 shadow-lg">
+        <div class="flex justify-between items-center mb-2 gap-2">
+          <span class="px-2.5 py-0.5 bg-rose-500/20 text-rose-300 border border-rose-500/30 rounded-full text-xs font-medium">Daily Sync</span>
+          <div class="flex gap-3">
+            <button id="btnSuggestPrompts" class="text-xs text-slate-400 hover:text-rose-300 transition">✨ Suggest</button>
+            <button id="btnNextPrompt" class="text-xs text-slate-400 hover:text-rose-300 transition">New Prompt ↻</button>
+          </div>
+        </div>
+        <h3 id="dailyQuestionText" class="serif text-lg text-white leading-snug my-3"></h3>
+        <div id="promptSuggestions" class="hidden space-y-2 mb-3"></div>
+
+        <div class="mt-4">
+          <textarea id="dailyInput" rows="2" maxlength="2000" placeholder="Write your answer to unlock your partner's..." class="w-full bg-slate-950/80 border border-slate-800 rounded-xl p-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"></textarea>
+          <button id="btnLockIn" class="mt-2 w-full py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-medium text-sm rounded-xl transition shadow-md shadow-rose-950">Lock In Answer</button>
+        </div>
+
+        <div class="mt-5 pt-4 border-t border-slate-800/80 space-y-3">
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-medium text-slate-400">Responses</span>
+            <span id="revealStatusBadge" class="text-xs text-amber-400"></span>
+          </div>
+          <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+            <p id="ansLabelA" class="text-xs text-rose-400 font-medium mb-1"></p>
+            <p id="ansDisplayA" class="text-sm text-slate-300 italic"></p>
+          </div>
+          <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+            <p id="ansLabelB" class="text-xs text-teal-400 font-medium mb-1"></p>
+            <p id="ansDisplayB" class="text-sm text-slate-300 italic"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Card Deck -->
+    <div id="tab-deck" class="hidden space-y-4">
+      <div id="deckCategories" class="flex gap-2 overflow-x-auto no-scrollbar pb-1"></div>
+      <div id="deckCard" class="card-flip cursor-pointer bg-gradient-to-b from-slate-900 to-slate-950 border-2 border-slate-800 hover:border-rose-500/50 rounded-3xl p-8 min-h-[260px] flex flex-col justify-between items-center text-center shadow-xl">
+        <span id="cardCategoryBadge" class="text-xs uppercase tracking-widest text-rose-400 font-semibold"></span>
+        <p id="cardText" class="serif text-xl text-white leading-relaxed my-6"></p>
+        <span class="text-xs text-slate-400">Tap card to draw next →</span>
+      </div>
+    </div>
+
+    <!-- Love Jar -->
+    <div id="tab-jar" class="hidden space-y-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+        <h3 class="text-sm font-semibold text-white mb-2">Drop a Note in the Jar</h3>
+        <textarea id="jarInput" rows="2" maxlength="2000" placeholder="Something I appreciated about you today..." class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"></textarea>
+        <button id="btnAddNote" class="mt-2 w-full py-2 bg-teal-600 hover:bg-teal-500 text-white font-medium text-sm rounded-xl transition">Drop Note 💌</button>
+      </div>
+      <div id="jarList" class="space-y-3"></div>
+    </div>
+
+    <!-- Coach -->
+    <div id="tab-coach" class="hidden space-y-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+        <div class="flex justify-between items-center mb-1">
+          <h3 class="text-sm font-semibold text-white">Translate My Frustration</h3>
+          <span id="coachModeBadge" class="text-[10px] px-2 py-0.5 rounded-full border"></span>
+        </div>
+        <p class="text-xs text-slate-400 mb-3">Vent here first. The coach helps turn it into an "I feel…" message you can actually say. Nothing is shared with your partner unless you copy it.</p>
+        <textarea id="coachInput" rows="4" maxlength="2000" placeholder="e.g. You ALWAYS leave the dishes and I'm sick of being the only one who cares about this place" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500"></textarea>
+        <button id="btnTranslate" class="mt-2 w-full py-2.5 bg-violet-600 hover:bg-violet-500 text-white font-medium text-sm rounded-xl transition">Translate 🕊️</button>
+        <div id="coachResult" class="hidden mt-4 space-y-3"></div>
+        <p id="coachPrivacy" class="text-[11px] text-slate-500 mt-3"></p>
+      </div>
+    </div>
+
+    <!-- Rituals -->
+    <div id="tab-rituals" class="hidden space-y-4">
+      <div id="ritualTabs" class="flex gap-2 overflow-x-auto no-scrollbar pb-1"></div>
+
+      <!-- Bucket list & dates -->
+      <section id="ritual-bucket" class="space-y-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+          <h3 class="text-sm font-semibold text-white mb-2">Shared Bucket List</h3>
+          <div class="flex gap-2">
+            <input id="bucketInput" maxlength="200" placeholder="Something to do together..." class="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm placeholder-slate-500 focus:outline-none focus:border-rose-500">
+            <button id="btnAddBucket" class="px-4 bg-rose-600 hover:bg-rose-500 rounded-xl text-sm font-medium">Add</button>
+          </div>
+          <div id="dateIdeas" class="flex gap-2 overflow-x-auto no-scrollbar mt-3 text-xs"></div>
+        </div>
+        <div>
+          <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Upcoming dates</h4>
+          <div id="upcomingDates" class="space-y-2"></div>
+        </div>
+        <div>
+          <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Someday</h4>
+          <div id="bucketList" class="space-y-2"></div>
+        </div>
+      </section>
+
+      <!-- Weekly check-in -->
+      <section id="ritual-checkin" class="hidden space-y-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+          <div class="flex justify-between items-baseline">
+            <h3 class="text-sm font-semibold text-white">Weekly State of Us</h3>
+            <span id="checkinWeek" class="text-xs text-slate-400"></span>
+          </div>
+          <p class="text-xs text-slate-400 mt-1 mb-3">A 20-minute weekly ritual, loosely inspired by the Gottman "State of the Union" meeting. Fill yours in, then talk it through together.</p>
+          <div id="checkinForm" class="space-y-3"></div>
+          <button id="btnSaveCheckin" class="mt-3 w-full py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-medium text-sm rounded-xl transition">Save my check-in</button>
+        </div>
+        <div id="checkinPartner"></div>
+        <div>
+          <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Past weeks</h4>
+          <div id="checkinHistory" class="space-y-2"></div>
+        </div>
+      </section>
+
+      <!-- Challenges -->
+      <section id="ritual-challenges" class="hidden space-y-4">
+        <div id="activeChallenge"></div>
+        <div id="challengeList" class="space-y-2"></div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Bottom navigation -->
+  <nav class="fixed bottom-0 inset-x-0 bg-slate-900/95 backdrop-blur border-t border-slate-800 px-2 py-3 z-20">
+    <div id="navBar" class="max-w-md mx-auto flex justify-around"></div>
+  </nav>
+
+  <!-- Toast -->
+  <div id="toast" class="hidden fixed bottom-24 inset-x-0 z-30 flex justify-center px-4 pointer-events-none">
+    <div id="toastText" class="bg-slate-800 border border-slate-700 text-sm px-4 py-2 rounded-xl shadow-lg"></div>
+  </div>
+
+  <!-- Pairing & settings sheet -->
+  <div id="sheet" class="hidden fixed inset-0 z-40 bg-black/60 flex items-end sm:items-center justify-center">
+    <div class="w-full max-w-md bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-3xl p-5 max-h-[85vh] overflow-y-auto">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="serif text-lg text-rose-300">Pairing &amp; Settings</h2>
+        <button id="btnCloseSheet" aria-label="Close" class="text-slate-400 hover:text-white text-xl leading-none">×</button>
+      </div>
+      <div id="sheetBody" class="space-y-4 text-sm"></div>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="js/content.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/coach.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
