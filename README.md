@@ -14,6 +14,7 @@ Builds on the single-file prototype. It adds two-phone sync, an AI communication
 | **Translate My Frustration** | Turns a heated thought into an "I feel… when… Could we…?" message, and shows the feeling, the need, and a tip. If the text suggests a safety issue, it flags it and points to support instead of coaching reconciliation. Without AI keys you get a fill-in template that's clearly labelled. |
 | **✨ Suggested prompts** | Generates five daily questions from the couple's recent answers, notes, and bucket list. Pick one and it becomes the shared prompt. |
 | **Rituals** | A shared **bucket list** where you can set a date on any item. Dated items show under Upcoming and export to your calendar as `.ics`. A **Weekly State of Us** check-in, loosely inspired by the Gottman "State of the Union" meeting (an adaptation, not their official format). **Intimacy challenges** of 5 to 7 days, where each partner ticks off their own days. |
+| **Spark (intimacy)** | Suggests one intimate idea a day, picked from both partners' pulse vibes. Weeknights get gentle, low-effort ideas. Weekend nights (Friday to Sunday) get warmer, more memorable ones. If either partner's vibe is "Low Battery", Spark suggests closeness only. It turns on only after both partners opt in (18+). Either partner can say "Not tonight", show a different idea, or hide an idea for good, and no reason is asked. Neither answer is shown until you've both responded. Ideas you both enjoyed are saved as memories. Everything is short text, with no images, and lock-screen notifications stay vague. |
 | **Deck** | Adds an Appreciation category to match the original blueprint. |
 | **XSS fix** | All user text is rendered with `textContent`. No user data passes through `innerHTML`. |
 
@@ -35,7 +36,7 @@ supabase/functions/coach/index.ts       Edge Function that calls Claude
 
 1. **A Supabase project** (the free tier should be enough for testing).
    - In Authentication settings, **enable anonymous sign-ins**. Each phone signs in anonymously, with no email needed.
-   - Run `supabase/migrations/0001_ustwo.sql`, either in the SQL editor or with `supabase db push`.
+   - Run `supabase/migrations/0001_ustwo.sql` and then `0002_spark.sql`, either in the SQL editor or with `supabase db push`.
    - Copy the **Project URL** and the **anon / publishable key** into `config.js`. Never use the `service_role` / secret key in the app.
 2. **An Anthropic API key** for the coach, from the Claude Console with billing enabled. This key goes **only** into the Edge Function secrets, never into `config.js`:
    ```bash
@@ -66,4 +67,5 @@ supabase/functions/coach/index.ts       Edge Function that calls Claude
 - **Anonymous identity is tied to the browser.** If someone clears site data or switches phones, they lose access to the shared space. Adding email magic-link sign-in (linking the anonymous user) is the natural next step.
 - **Brute-forcing pairing codes:** each identity is limited to 10 tries per hour. Because anonymous identities are cheap to create, also turn on Supabase's CAPTCHA or rate limits for anonymous sign-ins before a public launch.
 - **Privacy:** data is protected by RLS but isn't end-to-end encrypted, so Supabase project admins can read it. Coach text is sent to Anthropic's API and isn't stored by the app. Say this clearly in your privacy policy.
+- **Spark privacy:** the app hides each partner's Spark answer until both have responded, but unlike daily-prompt answers, the database does not enforce this. A determined partner could read the other's answer early through the API. Tell me if you want it enforced server-side like the daily prompt.
 - **Conflicts:** last write wins per item. Shared items (bucket list, current prompt, active challenge) can be edited by either partner. Personal items (answers, vibes, notes, check-ins, challenge progress) can only be edited by their author.
