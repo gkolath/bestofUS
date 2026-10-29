@@ -105,6 +105,63 @@ window.UsTwoContent = {
     }
   ],
 
+  // "Spark" intimacy tab. Text-only, inclusive wording ("one partner", "the other"), nothing graphic.
+  // level: gentle (weekday-friendly, low effort) | warm | adventurous (weekend-friendly).
+  // energy: the lowest shared energy it suits: 'low' | 'medium' | 'high'.
+  // when: 'weekday' | 'weekend' | 'any'. kind: 'closeness' (non-sexual), 'play', 'position'.
+  spark: {
+    // How each pulse vibe maps to energy for tonight. 'rest' means suggest only non-sexual closeness.
+    vibeEnergy: {
+      '⚡ Energized & Chatty': 'high',
+      '🔥 Feeling Romantic': 'high',
+      '🌙 Quiet Cuddles': 'low',
+      '🤗 Need a hug': 'low',
+      '🧠 Heads-down, talk later': 'low',
+      '🔋 Low Battery (Need TLC)': 'rest'
+    },
+    ideas: [
+      // Closeness: always available, and the only suggestions when either partner needs rest.
+      { id: 'c-cuddle', kind: 'closeness', level: 'gentle', energy: 'low', when: 'any', minutes: 15,
+        title: 'Phones-down cuddle', desc: 'Lights low, phones in another room. Lie close for fifteen minutes and just breathe together. Nothing else is expected.' },
+      { id: 'c-massage', kind: 'closeness', level: 'gentle', energy: 'low', when: 'any', minutes: 20,
+        title: 'Ten minutes each', desc: 'Take turns giving a slow back or shoulder massage, ten minutes each. The receiver says "softer" or "more" as you go.' },
+      { id: 'c-bath', kind: 'closeness', level: 'gentle', energy: 'low', when: 'any', minutes: 30,
+        title: 'Shared bath or shower', desc: 'Warm water, a candle, no agenda. Wash each other\'s hair. Let it stay relaxing unless you both want more.' },
+      { id: 'c-kiss', kind: 'closeness', level: 'gentle', energy: 'low', when: 'weekday', minutes: 5,
+        title: 'The two-minute kiss', desc: 'Set a timer for two minutes and kiss slowly until it rings. Then decide together whether to stop there.' },
+
+      // Play: setting the mood, communication, anticipation.
+      { id: 'p-yesnomaybe', kind: 'play', level: 'warm', energy: 'medium', when: 'any', minutes: 30,
+        title: 'Yes / No / Maybe night', desc: 'Separately, each write a few things you\'d like to try, then share them and sort each into yes, no or maybe. No explaining a "no" needed.' },
+      { id: 'p-tease', kind: 'play', level: 'warm', energy: 'medium', when: 'weekday', minutes: 0,
+        title: 'Slow-burn day', desc: 'Send each other one flirty message during the day about what you\'re looking forward to. Keep it to words; the payoff is tonight.' },
+      { id: 'p-guide', kind: 'play', level: 'warm', energy: 'medium', when: 'any', minutes: 30,
+        title: 'Show me how', desc: 'One partner guides the other\'s hand to show exactly the touch they like best, then swap. Go slowly and talk.' },
+      { id: 'p-scene', kind: 'play', level: 'adventurous', energy: 'high', when: 'weekend', minutes: 90,
+        title: 'Set the scene', desc: 'Change the room: candles, a playlist you pick together, fresh sheets. Start with a long massage and let the evening take its time.' },
+      { id: 'p-new-room', kind: 'play', level: 'adventurous', energy: 'high', when: 'weekend', minutes: 60,
+        title: 'Somewhere new', desc: 'Pick a different room or a different time of day than usual, like a lazy weekend morning. Novelty alone makes it memorable.' },
+      { id: 'p-blindfold', kind: 'play', level: 'adventurous', energy: 'medium', when: 'weekend', minutes: 45,
+        title: 'Blindfold & senses', desc: 'One partner wears a blindfold or scarf while the other uses touch, temperature and taste. Agree on a word that means "pause" before you start.' },
+
+      // Positions: described plainly, comfort-first.
+      { id: 'x-spoon', kind: 'position', level: 'gentle', energy: 'low', when: 'weekday', minutes: 20,
+        title: 'Spooning', desc: 'Both lie on your sides facing the same way, one partner wrapped around the other from behind. Close, slow and low-effort: ideal for tired nights.' },
+      { id: 'x-face-side', kind: 'position', level: 'gentle', energy: 'low', when: 'any', minutes: 20,
+        title: 'Side by side, face to face', desc: 'Lie on your sides facing each other with legs intertwined. Lots of eye contact and kissing, and no one carries the effort.' },
+      { id: 'x-pillow', kind: 'position', level: 'warm', energy: 'medium', when: 'weekday', minutes: 20,
+        title: 'Classic, with a pillow', desc: 'Face to face with one partner on their back and a pillow under their hips. A small change in angle that often makes a familiar position feel new.' },
+      { id: 'x-on-top', kind: 'position', level: 'warm', energy: 'medium', when: 'any', minutes: 25,
+        title: 'One partner on top', desc: 'One partner lies back while the other sits astride and sets the pace. The partner on top leads; the other just enjoys and follows.' },
+      { id: 'x-lotus', kind: 'position', level: 'adventurous', energy: 'medium', when: 'weekend', minutes: 30,
+        title: 'Lotus', desc: 'One partner sits cross-legged and the other sits in their lap facing them, wrapping arms and legs around. More about closeness and rhythm than speed.' },
+      { id: 'x-edge', kind: 'position', level: 'adventurous', energy: 'high', when: 'weekend', minutes: 25,
+        title: 'Edge of the bed', desc: 'One partner lies back at the edge of the bed while the other kneels or stands. Easy on the knees, and a nice change of view.' },
+      { id: 'x-from-behind', kind: 'position', level: 'adventurous', energy: 'high', when: 'weekend', minutes: 25,
+        title: 'From behind, kneeling', desc: 'One partner on hands and knees or resting on pillows, the other kneeling behind. Keep checking in, since you can\'t see each other\'s faces.' }
+    ]
+  },
+
   dateIdeas: [
     'Cook a recipe from the country you want to visit next',
     'Sunrise walk with coffee',

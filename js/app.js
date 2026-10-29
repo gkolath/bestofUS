@@ -77,6 +77,7 @@
     ['daily', '🔒', 'Daily'],
     ['deck', '🃏', 'Deck'],
     ['jar', '🫙', 'Love Jar'],
+    ['spark', '🕯️', 'Spark'],
     ['coach', '🕊️', 'Coach'],
     ['rituals', '🗓️', 'Rituals']
   ];
@@ -86,7 +87,7 @@
     TABS.forEach(([t]) => $(`tab-${t}`).classList.toggle('hidden', t !== tab));
     fill($('navBar'), TABS.map(([t, icon, label]) =>
       h('button', {
-        class: 'flex flex-col items-center gap-1 px-2 ' + (t === tab ? 'text-rose-400' : 'text-slate-400 hover:text-slate-200'),
+        class: 'flex flex-col items-center gap-1 px-1 ' + (t === tab ? 'text-rose-400' : 'text-slate-400 hover:text-slate-200'),
         onclick: () => S.setUi({ tab: t })
       }, h('span', { class: 'text-lg' }, icon), h('span', { class: 'text-[11px] font-medium' }, label))
     ));
@@ -298,6 +299,141 @@
     } finally {
       $('btnTranslate').disabled = false;
     }
+  }
+
+  // ---------- Spark (intimacy) ----------
+  // One idea per day, picked from both partners' pulse vibes. Weekend nights (Fri to Sun) lean
+  // more adventurous. Both partners must opt in; either can pass or hide an idea, no reasons asked.
+
+  const ENERGY = ['rest', 'low', 'medium', 'high'];
+  const rank = e => ENERGY.indexOf(e);
+
+  function sparkPick(dateStr, vibes, hidden, shuffle) {
+    const Sp = C.spark;
+    const day = new Date(dateStr + 'T12:00:00').getDay();
+    const weekend = day === 5 || day === 6 || day === 0;
+    const shared = vibes.map(v => Sp.vibeEnergy[v] || 'medium').reduce((a, b) => (rank(a) <= rank(b) ? a : b));
+    const usable = Sp.ideas.filter(i => !hidden.has(i.id) && (i.when === 'any' || i.when === (weekend ? 'weekend' : 'weekday')));
+    let pool;
+    if (shared === 'rest') {
+      pool = usable.filter(i => i.kind === 'closeness');
+    } else {
+      const levels = weekend ? ['warm', 'adventurous'] : ['gentle', 'warm'];
+      if (shared === 'low') levels.push('gentle');
+      pool = usable.filter(i => rank(i.energy) <= rank(shared) && levels.includes(i.level));
+    }
+    if (!pool.length) pool = usable.filter(i => i.kind === 'closeness');
+    if (!pool.length) pool = Sp.ideas.filter(i => i.kind === 'closeness');
+    let hash = 0;
+    for (const ch of dateStr) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+    return { idea: pool[(hash + shuffle) % pool.length], weekend, shared, poolSize: pool.length };
+  }
+
+  function sparkPref(p) { const e = S.get(`spark_pref:${p}`); return e ? e.data : { optIn: false, hidden: [] }; }
+
+  function setSparkPref(patch) {
+    S.put(`spark_pref:${S.me()}`, 'spark_pref', Object.assign({}, sparkPref(S.me()), patch));
+  }
+
+  const ENERGY_LABEL = { rest: 'resting', low: 'low-key', medium: 'warm', high: 'high' };
+
+  function renderSpark() {
+    const me = S.me();
+    const them = other(me);
+    const mine = sparkPref(me);
+    const theirs = sparkPref(them);
+    const body = $('sparkBody');
+
+    if (!mine.optIn) {
+      fill(body, h('div', { class: 'bg-slate-900 border border-fuchsia-500/30 rounded-2xl p-5 space-y-3' },
+        h('h3', { class: 'serif text-lg text-white' }, 'Spark'),
+        h('p', { class: 'text-sm text-slate-300' }, 'One intimate idea a day, picked from both your moods: something easy on weeknights and something more memorable on weekends.'),
+        h('ul', { class: 'text-xs text-slate-400 space-y-1 list-disc pl-4' },
+          h('li', {}, 'For adults only. It switches on only when both of you turn it on.'),
+          h('li', {}, 'Either of you can say "not tonight" or hide an idea for good, and no reason is needed.'),
+          h('li', {}, 'Ideas are short text descriptions. There are no images.')),
+        h('button', { class: 'w-full py-2.5 bg-fuchsia-700 hover:bg-fuchsia-600 text-white font-medium text-sm rounded-xl', onclick: () => setSparkPref({ optIn: true }) },
+          paired() ? "I'm 18+ and want Spark on" : `Turn on Spark for ${who(me)} (18+)`)
+      ));
+      return;
+    }
+    if (!theirs.optIn) {
+      fill(body, h('div', { class: 'bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3' },
+        h('h3', { class: 'serif text-lg text-white' }, 'Spark is on for you'),
+        h('p', { class: 'text-sm text-slate-300' }, paired()
+          ? 'It will start once your partner turns it on too. We don\'t send them a reminder, so bring it up when it feels right.'
+          : `Switch to ${who(them)} at the top and turn it on there too.`),
+        h('button', { class: 'text-xs text-slate-500 hover:text-slate-300', onclick: () => setSparkPref({ optIn: false }) }, 'Turn Spark off')
+      ));
+      return;
+    }
+
+    const date = todayStr();
+    const vibes = ['A', 'B'].map(p => (S.get(`vibe:${p}`) || { data: { text: '' } }).data.text);
+    const hidden = new Set([...(mine.hidden || []), ...(theirs.hidden || [])]);
+    const pickEntry = S.get(`spark_pick:${date}`);
+    const shuffle = pickEntry ? pickEntry.data.shuffle : 0;
+    const { idea, weekend, shared, poolSize } = sparkPick(date, vibes, hidden, shuffle);
+
+    const resp = p => { const e = S.get(`spark:${date}:${p}`); return e && e.data.itemId === idea.id ? e.data.choice : null; };
+    const myChoice = resp(me);
+    const theirChoice = resp(them);
+    const done = S.get(`spark_done:${date}`);
+
+    const respond = choice => S.put(`spark:${date}:${me}`, 'spark', { itemId: idea.id, choice });
+    const shuffleIdea = () => S.put(`spark_pick:${date}`, 'spark_pick', { shuffle: shuffle + 1 }, { keepAuthor: true });
+
+    let status;
+    if (done && done.data.itemId === idea.id) {
+      status = h('p', { class: 'text-sm text-emerald-300' }, 'Saved to your memories ✨');
+    } else if (!myChoice) {
+      status = h('p', { class: 'text-xs text-slate-400' }, theirChoice ? `${who(them)} has responded. Answer to see where you both are.` : 'Neither answer is shown until you\'ve both responded.');
+    } else if (!theirChoice) {
+      status = h('p', { class: 'text-xs text-slate-400' }, `You said ${myChoice === 'in' ? '"I\'m in"' : '"not tonight"'}. Waiting for ${whoInline(them)}.`);
+    } else if (myChoice === 'in' && theirChoice === 'in') {
+      status = h('div', { class: 'space-y-2' },
+        h('p', { class: 'text-sm text-fuchsia-200 font-medium' }, "It's a yes from both of you 💞"),
+        h('button', { class: 'w-full py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm',
+          onclick: () => S.put(`spark_done:${date}`, 'spark_done', { itemId: idea.id, title: idea.title }) }, 'We did it, save the memory'));
+    } else {
+      status = h('p', { class: 'text-sm text-slate-300' }, 'Not tonight, and that\'s completely fine. A cuddle or an early night counts too.');
+    }
+
+    const cuesFor = { closeness: 'Closeness', play: 'Play', position: 'Position' };
+    const memories = S.all('spark_done').slice(0, 8);
+
+    fill(body,
+      h('div', { class: 'flex flex-wrap gap-2 text-[11px]' },
+        h('span', { class: 'px-2 py-0.5 rounded-full border border-fuchsia-500/40 text-fuchsia-200' }, weekend ? 'Weekend night' : 'Weeknight'),
+        h('span', { class: 'px-2 py-0.5 rounded-full border border-slate-700 text-slate-300' }, `Shared energy: ${ENERGY_LABEL[shared]}`),
+        h('span', { class: 'px-2 py-0.5 rounded-full border border-slate-700 text-slate-400' }, `From your pulse: ${vibes.filter(Boolean).join(' + ') || 'not set'}`)),
+      h('div', { class: 'bg-gradient-to-br from-fuchsia-950/50 via-slate-900 to-slate-900 border border-fuchsia-500/30 rounded-3xl p-6 space-y-4 shadow-xl' },
+        h('div', { class: 'flex justify-between items-baseline text-xs' },
+          h('span', { class: 'uppercase tracking-widest text-fuchsia-300 font-semibold' }, `Tonight · ${cuesFor[idea.kind]}`),
+          h('span', { class: 'text-slate-400' }, idea.minutes ? `~${idea.minutes} min` : 'all day')),
+        h('h3', { class: 'serif text-2xl text-white' }, idea.title),
+        h('p', { class: 'text-sm text-slate-200 leading-relaxed' }, idea.desc),
+        shared === 'rest' ? h('p', { class: 'text-xs text-amber-300' }, 'One of you is low on battery, so tonight is about closeness only.') : null,
+        h('div', { class: 'grid grid-cols-2 gap-2' },
+          h('button', { class: 'py-2.5 rounded-xl text-sm font-medium ' + (myChoice === 'in' ? 'bg-fuchsia-600 text-white ring-2 ring-fuchsia-300' : 'bg-fuchsia-700/80 hover:bg-fuchsia-600 text-white'), onclick: () => respond('in') }, "I'm in 💗"),
+          h('button', { class: 'py-2.5 rounded-xl text-sm font-medium ' + (myChoice === 'pass' ? 'bg-slate-600 text-white ring-2 ring-slate-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'), onclick: () => respond('pass') }, 'Not tonight')),
+        status,
+        h('div', { class: 'flex justify-between text-xs pt-1' },
+          poolSize > 1 ? h('button', { class: 'text-slate-400 hover:text-white', onclick: shuffleIdea }, 'Show a different idea ↻') : h('span', {}),
+          h('button', { class: 'text-slate-500 hover:text-red-300', onclick: () => setSparkPref({ hidden: [...new Set([...(mine.hidden || []), idea.id])] }) }, 'Not for us, hide it'))
+      ),
+      h('p', { class: 'text-[11px] text-slate-500' }, 'Change tonight\'s idea by updating your vibe at the top. Go slow, keep checking in, and stop whenever either of you wants to.'),
+      h('div', {},
+        h('h4', { class: 'text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2' }, 'Our memories'),
+        memories.length ? h('div', { class: 'space-y-2' }, memories.map(m =>
+          h('div', { class: 'bg-slate-900/80 border border-slate-800 rounded-xl px-3 py-2 flex justify-between text-sm' },
+            h('span', { class: 'text-slate-200' }, m.data.title),
+            h('span', { class: 'text-xs text-slate-500' }, new Date(m.id.split(':')[1] + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })))))
+          : h('p', { class: 'text-xs text-slate-500' }, 'Ideas you both enjoyed will be saved here.')),
+      h('div', { class: 'flex justify-between text-xs text-slate-500 border-t border-slate-800 pt-3' },
+        (mine.hidden || []).length ? h('button', { class: 'hover:text-slate-300', onclick: () => setSparkPref({ hidden: [] }) }, `Unhide ${(mine.hidden || []).length} idea(s) you hid`) : h('span', {}),
+        h('button', { class: 'hover:text-slate-300', onclick: () => setSparkPref({ optIn: false }) }, 'Turn Spark off'))
+    );
   }
 
   // ---------- Rituals ----------
@@ -561,7 +697,10 @@
     bucket: () => 'New idea on your bucket list 🪣',
     checkin: () => 'Your partner filled in this week\'s check-in 🗣️',
     challenge: () => 'A new challenge has started 🔥',
-    prompt: () => 'There\'s a new daily prompt ✨'
+    prompt: () => 'There\'s a new daily prompt ✨',
+    // Deliberately vague: these can show on a lock screen.
+    spark: () => 'Something is waiting for you in UsTwo 💗',
+    spark_done: () => 'A new memory was saved 💗'
   };
 
   S.onRemote((e, prev) => {
@@ -601,6 +740,7 @@
     renderDaily();
     renderDeck();
     renderJar();
+    renderSpark();
     renderCoachMode();
     renderRituals();
     // If the partner changed the prompt, clear the stale draft.
@@ -620,5 +760,5 @@
   syncDailyInput();
   if (paired()) S.connect().catch(() => {});
 
-  window.UsTwoApp = { h }; // exposed for tests
+  window.UsTwoApp = { h, sparkPick }; // exposed for tests
 })();
