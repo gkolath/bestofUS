@@ -308,28 +308,31 @@
   const ENERGY = ['rest', 'low', 'medium', 'high'];
   const rank = e => ENERGY.indexOf(e);
 
-  function sparkPick(dateStr, vibes, hidden, shuffle) {
+  function sparkPick(dateStr, vibes, hidden, shuffle, heat) {
     const Sp = C.spark;
     const day = new Date(dateStr + 'T12:00:00').getDay();
     const weekend = day === 5 || day === 6 || day === 0;
     const shared = vibes.map(v => Sp.vibeEnergy[v] || 'medium').reduce((a, b) => (rank(a) <= rank(b) ? a : b));
     const usable = Sp.ideas.filter(i => !hidden.has(i.id) && (i.when === 'any' || i.when === (weekend ? 'weekend' : 'weekday')));
-    let pool;
-    if (shared === 'rest') {
-      pool = usable.filter(i => i.kind === 'closeness');
-    } else {
-      const levels = weekend ? ['warm', 'adventurous'] : ['gentle', 'warm'];
-      if (shared === 'low') levels.push('gentle');
-      pool = usable.filter(i => rank(i.energy) <= rank(shared) && levels.includes(i.level));
+    const closeness = usable.filter(i => i.kind === 'closeness');
+    let pool = [];
+    if (shared !== 'rest') {
+      const fits = usable.filter(i => i.kind !== 'closeness' && rank(i.energy) <= rank(shared) && i.heat <= heat);
+      // Weekends aim for your full heat; weeknights can sit one notch lower and stay short.
+      const top = Math.max(0, ...fits.map(i => i.heat));
+      pool = fits.filter(i => (weekend ? i.heat === top : i.heat >= top - 1));
+      if (!weekend) {
+        const quick = pool.filter(i => i.minutes <= 30);
+        if (quick.length) pool = quick;
+      }
     }
-    if (!pool.length) pool = usable.filter(i => i.kind === 'closeness');
-    if (!pool.length) pool = Sp.ideas.filter(i => i.kind === 'closeness');
+    if (!pool.length) pool = closeness.length ? closeness : Sp.ideas.filter(i => i.kind === 'closeness');
     let hash = 0;
     for (const ch of dateStr) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
     return { idea: pool[(hash + shuffle) % pool.length], weekend, shared, poolSize: pool.length };
   }
 
-  function sparkPref(p) { const e = S.get(`spark_pref:${p}`); return e ? e.data : { optIn: false, hidden: [] }; }
+  function sparkPref(p) { const e = S.get(`spark_pref:${p}`); return Object.assign({ optIn: false, hidden: [], heat: 2 }, e ? e.data : {}); }
 
   function setSparkPref(patch) {
     S.put(`spark_pref:${S.me()}`, 'spark_pref', Object.assign({}, sparkPref(S.me()), patch));
@@ -373,7 +376,9 @@
     const hidden = new Set([...(mine.hidden || []), ...(theirs.hidden || [])]);
     const pickEntry = S.get(`spark_pick:${date}`);
     const shuffle = pickEntry ? pickEntry.data.shuffle : 0;
-    const { idea, weekend, shared, poolSize } = sparkPick(date, vibes, hidden, shuffle);
+    const heat = Math.min(mine.heat, theirs.heat);
+    const heatInfo = C.spark.heats.find(x => x.value === heat);
+    const { idea, weekend, shared, poolSize } = sparkPick(date, vibes, hidden, shuffle, heat);
 
     const resp = p => { const e = S.get(`spark:${date}:${p}`); return e && e.data.itemId === idea.id ? e.data.choice : null; };
     const myChoice = resp(me);
@@ -399,12 +404,13 @@
       status = h('p', { class: 'text-sm text-slate-300' }, 'Not tonight, and that\'s completely fine. A cuddle or an early night counts too.');
     }
 
-    const cuesFor = { closeness: 'Closeness', play: 'Play', position: 'Position' };
+    const cuesFor = { closeness: 'Closeness', tease: 'Tease', play: 'Play', position: 'Position' };
     const memories = S.all('spark_done').slice(0, 8);
 
     fill(body,
       h('div', { class: 'flex flex-wrap gap-2 text-[11px]' },
         h('span', { class: 'px-2 py-0.5 rounded-full border border-fuchsia-500/40 text-fuchsia-200' }, weekend ? 'Weekend night' : 'Weeknight'),
+        h('span', { class: 'px-2 py-0.5 rounded-full border border-fuchsia-500/40 text-fuchsia-200' }, `Heat: ${heatInfo.label}`),
         h('span', { class: 'px-2 py-0.5 rounded-full border border-slate-700 text-slate-300' }, `Shared energy: ${ENERGY_LABEL[shared]}`),
         h('span', { class: 'px-2 py-0.5 rounded-full border border-slate-700 text-slate-400' }, `From your pulse: ${vibes.filter(Boolean).join(' + ') || 'not set'}`)),
       h('div', { class: 'bg-gradient-to-br from-fuchsia-950/50 via-slate-900 to-slate-900 border border-fuchsia-500/30 rounded-3xl p-6 space-y-4 shadow-xl' },
@@ -422,6 +428,14 @@
           poolSize > 1 ? h('button', { class: 'text-slate-400 hover:text-white', onclick: shuffleIdea }, 'Show a different idea ↻') : h('span', {}),
           h('button', { class: 'text-slate-500 hover:text-red-300', onclick: () => setSparkPref({ hidden: [...new Set([...(mine.hidden || []), idea.id])] }) }, 'Not for us, hide it'))
       ),
+      h('div', { class: 'bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-2' },
+        h('p', { class: 'text-xs text-slate-300' }, `${paired() ? 'Your' : who(me) + "'s"} heat level`),
+        h('div', { class: 'grid grid-cols-3 gap-2' }, C.spark.heats.map(x =>
+          h('button', {
+            class: 'rounded-xl px-2 py-2 text-xs border transition ' + (mine.heat === x.value ? 'bg-fuchsia-700 border-fuchsia-400 text-white' : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-fuchsia-500/50'),
+            title: x.hint, onclick: () => setSparkPref({ heat: x.value })
+          }, x.label))),
+        h('p', { class: 'text-[11px] text-slate-500' }, 'Tonight uses the lower of your two settings, so nobody is pushed past where they want to go. Your partner only sees the result.')),
       h('p', { class: 'text-[11px] text-slate-500' }, 'Change tonight\'s idea by updating your vibe at the top. Go slow, keep checking in, and stop whenever either of you wants to.'),
       h('div', {},
         h('h4', { class: 'text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2' }, 'Our memories'),
