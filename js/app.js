@@ -28,12 +28,20 @@
 
   const paired = () => S.state.mode === 'paired';
   const other = p => (p === 'A' ? 'B' : 'A');
-  function who(p) {
-    if (!paired()) return `Partner ${p}`;
-    return p === S.me() ? 'You' : 'Your partner';
+  // Names come from each partner's 'profile:<A|B>' entry; set them in the settings sheet.
+  function nameOf(p) {
+    const e = S.get(`profile:${p}`);
+    const n = e && e.data && typeof e.data.name === 'string' ? e.data.name.trim() : '';
+    return n || null;
   }
-  // Mid-sentence form: "your partner" when paired, "Partner B" in the demo.
-  const whoInline = p => (paired() ? who(p).toLowerCase() : who(p));
+  function who(p) {
+    if (!paired()) return nameOf(p) || `Partner ${p}`;
+    if (p === S.me()) return 'You';
+    return nameOf(p) || 'Your partner';
+  }
+  // Mid-sentence form: "your partner" rather than "Your partner"; names stay as they are.
+  const whoInline = p => { const w = who(p); return w === 'You' || w === 'Your partner' ? w.toLowerCase() : w; };
+  const initial = p => (nameOf(p) || p).charAt(0).toUpperCase();
 
   function ago(iso) {
     if (!iso) return '';
@@ -73,23 +81,47 @@
 
   // ---------- Navigation ----------
 
+  // Line icons, built as SVG elements: [tag, attributes] per shape.
+  const ICONS = {
+    daily: [['path', { d: 'M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z' }]],
+    deck: [['rect', { x: 4, y: 6, width: 12, height: 15, rx: 2 }], ['path', { d: 'M8 3h10a2 2 0 0 1 2 2v13' }]],
+    jar: [['rect', { x: 3, y: 5, width: 18, height: 14, rx: 2 }], ['path', { d: 'M3 7l9 6 9-6' }]],
+    spark: [['path', { d: 'M12 3c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-3-1-5.5 1-8.5z' }]],
+    coach: [['path', { d: 'M4 5h16v11H9l-5 4z' }]],
+    rituals: [['rect', { x: 3, y: 5, width: 18, height: 16, rx: 2 }], ['path', { d: 'M3 10h18M8 3v4M16 3v4' }]]
+  };
+  function icon(name) {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('class', 'icon');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    ICONS[name].forEach(([tag, attrs]) => {
+      const el = document.createElementNS(NS, tag);
+      Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+      svg.appendChild(el);
+    });
+    return svg;
+  }
+
   const TABS = [
-    ['daily', '🔒', 'Daily'],
-    ['deck', '🃏', 'Deck'],
-    ['jar', '🫙', 'Love Jar'],
-    ['spark', '🕯️', 'Spark'],
-    ['coach', '🕊️', 'Coach'],
-    ['rituals', '🗓️', 'Rituals']
+    ['daily', 'Tonight'],
+    ['deck', 'Cards'],
+    ['jar', 'Notes'],
+    ['spark', 'Spark'],
+    ['coach', 'Coach'],
+    ['rituals', 'Rituals']
   ];
 
   function renderNav() {
     const tab = S.state.ui.tab;
     TABS.forEach(([t]) => $(`tab-${t}`).classList.toggle('hidden', t !== tab));
-    fill($('navBar'), TABS.map(([t, icon, label]) =>
+    fill($('navBar'), TABS.map(([t, label]) =>
       h('button', {
-        class: 'flex flex-col items-center gap-1 px-1 ' + (t === tab ? 'text-rose-400' : 'text-slate-400 hover:text-slate-200'),
+        class: 'flex flex-col items-center gap-1 px-1 ' + (t === tab ? 'text-rose-300' : 'text-slate-500 hover:text-slate-200'),
+        'aria-current': t === tab ? 'page' : null,
         onclick: () => S.setUi({ tab: t })
-      }, h('span', { class: 'text-lg' }, icon), h('span', { class: 'text-[11px] font-medium' }, label))
+      }, icon(t), h('span', { class: 'text-[10px] font-medium tracking-wider uppercase' }, label))
     ));
   }
 
@@ -100,13 +132,15 @@
     $('partnerSwitcher').classList.toggle('hidden', paired());
     $('btnPartnerA').className = 'px-3 py-1 rounded-full text-xs font-medium transition ' + (isA ? 'bg-rose-500 text-white' : 'text-slate-400 hover:text-white');
     $('btnPartnerB').className = 'px-3 py-1 rounded-full text-xs font-medium transition ' + (!isA ? 'bg-teal-600 text-white' : 'text-slate-400 hover:text-white');
-    $('activePartnerLabel').textContent = paired() ? '' : `Acting as Partner ${S.me()}`;
+    $('btnPartnerA').textContent = who('A');
+    $('btnPartnerB').textContent = who('B');
+    $('activePartnerLabel').textContent = paired() ? '' : `As ${who(S.me())}`;
 
     const labels = {
-      offline: paired() ? '⚪ Offline, changes will sync later' : 'Single-device demo',
-      connecting: '🟡 Connecting…',
-      live: S.state.pairCode ? '🟡 Waiting for your partner to join' : '🟢 Synced with your partner',
-      error: '🔴 Sync problem, retrying'
+      offline: paired() ? 'Offline · changes will sync later' : 'Just the two of you',
+      connecting: 'Connecting…',
+      live: S.state.pairCode ? 'Waiting for your partner to join' : 'Together · in sync',
+      error: 'Sync issue · retrying'
     };
     $('syncLabel').textContent = labels[paired() ? S.syncStatus : 'offline'];
   }
@@ -114,7 +148,7 @@
   function renderPulse() {
     ['A', 'B'].forEach(p => {
       const v = S.get(`vibe:${p}`);
-      $(`vibeLabel${p}`).textContent = `${who(p)}'s Vibe`;
+      $(`vibeLabel${p}`).textContent = who(p);
       $(`status${p}`).textContent = v ? v.data.text : '—';
     });
     const mine = S.get(`vibe:${S.me()}`);
@@ -143,9 +177,9 @@
     const both = !!(mine && theirsMarked);
 
     const badge = $('revealStatusBadge');
-    badge.textContent = both ? '✨ Unlocked! Both answered' : '🔒 Blind Mode: Both must answer to reveal';
-    badge.className = both ? 'text-xs text-emerald-400 font-medium' : 'text-xs text-amber-400';
-    $('btnLockIn').textContent = mine ? 'Update My Answer' : 'Lock In Answer';
+    badge.textContent = both ? 'Revealed' : 'Sealed until you both answer';
+    badge.className = both ? 'text-xs text-teal-300 font-medium' : 'text-xs text-slate-400';
+    $('btnLockIn').textContent = mine ? 'Rewrite my answer' : 'Seal my answer';
 
     ['A', 'B'].forEach(x => {
       $(`ansLabel${x}`).textContent = who(x);
@@ -153,7 +187,7 @@
       const ans = S.get(`answer:${key}:${x}`);
       const marked = S.get(`answered:${key}:${x}`);
       if (x === me) {
-        disp.textContent = ans ? ans.data.text : 'Not answered yet';
+        disp.textContent = ans ? ans.data.text : 'Not written yet';
         disp.className = ans ? 'text-sm text-slate-100' : 'text-sm text-slate-400 italic';
       } else if (both && ans) {
         disp.textContent = ans.data.text;
@@ -162,7 +196,7 @@
         disp.textContent = 'Unlocking…';
         disp.className = 'text-sm text-slate-400 italic';
       } else {
-        disp.textContent = marked ? '🔒 Answered (submit yours to unlock)' : `Waiting for ${whoInline(x)}...`;
+        disp.textContent = marked ? 'Sealed. Write yours to open it.' : `Waiting for ${whoInline(x)}...`;
         disp.className = 'text-sm text-slate-400 italic';
       }
     });
@@ -183,7 +217,7 @@
     S.put(`answered:${key}:${me}`, 'answered', { promptKey: key });
     // Server only reveals the partner's answer after ours is stored; fetch it now.
     if (paired()) setTimeout(() => S.pull(), 800);
-    toast('Answer locked in 🔒');
+    toast('Sealed');
   }
 
   function setPrompt(text) {
@@ -202,7 +236,7 @@
   async function suggestPrompts() {
     const box = $('promptSuggestions');
     box.classList.remove('hidden');
-    fill(box, h('p', { class: 'text-xs text-slate-400' }, Coach.aiAvailable() ? '✨ Writing prompts from your history…' : 'Shuffling the prompt pool…'));
+    fill(box, h('p', { class: 'text-xs text-slate-400' }, Coach.aiAvailable() ? 'Writing questions from your history…' : 'Shuffling questions…'));
     try {
       const res = await Coach.generatePrompts();
       fill(box,
@@ -240,7 +274,7 @@
           h('span', { class: 'font-medium text-teal-400' }, who(n.author)),
           h('span', { class: 'flex gap-3' },
             h('span', {}, ago(n.updated_at)),
-            n.author === S.me() ? h('button', { class: 'hover:text-red-400', 'aria-label': 'Delete note', onclick: () => S.remove(n.id) }, '✕') : null
+            n.author === S.me() ? h('button', { class: 'hover:text-red-400', 'aria-label': 'Delete note', onclick: () => S.remove(n.id) }, '×') : null
           )
         ),
         h('p', { class: 'text-sm text-slate-200 whitespace-pre-wrap break-words' }, n.data.text)
@@ -254,7 +288,7 @@
     if (!val) return;
     S.put(`note:${S.uid()}`, 'note', { text: val });
     input.value = '';
-    toast('Note dropped 💌');
+    toast('Note left');
   }
 
   // ---------- Coach ----------
@@ -290,7 +324,7 @@
           h('div', { class: 'bg-slate-950/60 border border-slate-800 rounded-xl p-2' }, h('p', { class: 'text-slate-400' }, 'Feeling'), h('p', { class: 'text-slate-100' }, r.feeling)),
           h('div', { class: 'bg-slate-950/60 border border-slate-800 rounded-xl p-2' }, h('p', { class: 'text-slate-400' }, 'Need'), h('p', { class: 'text-slate-100' }, r.need))
         ),
-        h('p', { class: 'text-xs text-slate-300' }, '💡 ', r.tip),
+        h('p', { class: 'text-xs text-slate-300' }, h('span', { class: 'text-teal-300' }, 'Tip  '), r.tip),
         (r.extraTips || []).map(t => h('p', { class: 'text-xs text-slate-400' }, '• ', t)),
         h('button', { class: 'w-full py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm', onclick: copy }, 'Copy message')
       );
@@ -390,14 +424,14 @@
 
     let status;
     if (done && done.data.itemId === idea.id) {
-      status = h('p', { class: 'text-sm text-emerald-300' }, 'Saved to your memories ✨');
+      status = h('p', { class: 'text-sm text-emerald-300' }, 'Saved to your memories');
     } else if (!myChoice) {
       status = h('p', { class: 'text-xs text-slate-400' }, theirChoice ? `${who(them)} has responded. Answer to see where you both are.` : 'Neither answer is shown until you\'ve both responded.');
     } else if (!theirChoice) {
       status = h('p', { class: 'text-xs text-slate-400' }, `You said ${myChoice === 'in' ? '"I\'m in"' : '"not tonight"'}. Waiting for ${whoInline(them)}.`);
     } else if (myChoice === 'in' && theirChoice === 'in') {
       status = h('div', { class: 'space-y-2' },
-        h('p', { class: 'text-sm text-fuchsia-200 font-medium' }, "It's a yes from both of you 💞"),
+        h('p', { class: 'text-sm text-fuchsia-200 font-medium' }, 'You both said yes.'),
         h('button', { class: 'w-full py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm',
           onclick: () => S.put(`spark_done:${date}`, 'spark_done', { itemId: idea.id, title: idea.title }) }, 'We did it, save the memory'));
     } else {
@@ -412,20 +446,20 @@
         h('span', { class: 'px-2 py-0.5 rounded-full border border-fuchsia-500/40 text-fuchsia-200' }, weekend ? 'Weekend night' : 'Weeknight'),
         h('span', { class: 'px-2 py-0.5 rounded-full border border-fuchsia-500/40 text-fuchsia-200' }, `Heat: ${heatInfo.label}`),
         h('span', { class: 'px-2 py-0.5 rounded-full border border-slate-700 text-slate-300' }, `Shared energy: ${ENERGY_LABEL[shared]}`),
-        h('span', { class: 'px-2 py-0.5 rounded-full border border-slate-700 text-slate-400' }, `From your pulse: ${vibes.filter(Boolean).join(' + ') || 'not set'}`)),
+        h('span', { class: 'px-2 py-0.5 rounded-full border border-slate-700 text-slate-400' }, `Your moods: ${vibes.filter(Boolean).join(' + ') || 'not set'}`)),
       h('div', { class: 'bg-gradient-to-br from-fuchsia-950/50 via-slate-900 to-slate-900 border border-fuchsia-500/30 rounded-3xl p-6 space-y-4 shadow-xl' },
         h('div', { class: 'flex justify-between items-baseline text-xs' },
           h('span', { class: 'uppercase tracking-widest text-fuchsia-300 font-semibold' }, `Tonight · ${cuesFor[idea.kind]}`),
           h('span', { class: 'text-slate-400' }, idea.minutes ? `~${idea.minutes} min` : 'all day')),
         h('h3', { class: 'serif text-2xl text-white' }, idea.title),
         h('p', { class: 'text-sm text-slate-200 leading-relaxed' }, idea.desc),
-        shared === 'rest' ? h('p', { class: 'text-xs text-amber-300' }, 'One of you is low on battery, so tonight is about closeness only.') : null,
+        shared === 'rest' ? h('p', { class: 'text-xs text-amber-300' }, 'One of you is running on empty, so tonight is about closeness only.') : null,
         h('div', { class: 'grid grid-cols-2 gap-2' },
-          h('button', { class: 'py-2.5 rounded-xl text-sm font-medium ' + (myChoice === 'in' ? 'bg-fuchsia-600 text-white ring-2 ring-fuchsia-300' : 'bg-fuchsia-700/80 hover:bg-fuchsia-600 text-white'), onclick: () => respond('in') }, "I'm in 💗"),
+          h('button', { class: 'py-2.5 rounded-xl text-sm font-medium ' + (myChoice === 'in' ? 'bg-fuchsia-600 text-white ring-2 ring-fuchsia-300' : 'bg-fuchsia-700/80 hover:bg-fuchsia-600 text-white'), onclick: () => respond('in') }, "I'm in"),
           h('button', { class: 'py-2.5 rounded-xl text-sm font-medium ' + (myChoice === 'pass' ? 'bg-slate-600 text-white ring-2 ring-slate-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'), onclick: () => respond('pass') }, 'Not tonight')),
         status,
         h('div', { class: 'flex justify-between text-xs pt-1' },
-          poolSize > 1 ? h('button', { class: 'text-slate-400 hover:text-white', onclick: shuffleIdea }, 'Show a different idea ↻') : h('span', {}),
+          poolSize > 1 ? h('button', { class: 'text-slate-400 hover:text-white', onclick: shuffleIdea }, 'Something else') : h('span', {}),
           h('button', { class: 'text-slate-500 hover:text-red-300', onclick: () => setSparkPref({ hidden: [...new Set([...(mine.hidden || []), idea.id])] }) }, 'Not for us, hide it'))
       ),
       h('div', { class: 'bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-2' },
@@ -436,9 +470,9 @@
             title: x.hint, onclick: () => setSparkPref({ heat: x.value })
           }, x.label))),
         h('p', { class: 'text-[11px] text-slate-500' }, 'Tonight uses the lower of your two settings, so nobody is pushed past where they want to go. Your partner only sees the result.')),
-      h('p', { class: 'text-[11px] text-slate-500' }, 'Change tonight\'s idea by updating your vibe at the top. Go slow, keep checking in, and stop whenever either of you wants to.'),
+      h('p', { class: 'text-[11px] text-slate-500' }, 'Change tonight\'s idea by changing your mood at the top. Go slow, keep checking in, and stop whenever either of you wants to.'),
       h('div', {},
-        h('h4', { class: 'text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2' }, 'Our memories'),
+        h('h4', { class: 'eyebrow font-semibold text-slate-400 mb-2' }, 'Our memories'),
         memories.length ? h('div', { class: 'space-y-2' }, memories.map(m =>
           h('div', { class: 'bg-slate-900/80 border border-slate-800 rounded-xl px-3 py-2 flex justify-between text-sm' },
             h('span', { class: 'text-slate-200' }, m.data.title),
@@ -452,7 +486,7 @@
 
   // ---------- Rituals ----------
 
-  const RITUALS = [['bucket', '🪣 Bucket & Dates'], ['checkin', '🗣️ Weekly Check-in'], ['challenges', '🔥 Challenges']];
+  const RITUALS = [['bucket', 'Plans & dates'], ['checkin', 'Weekly check-in'], ['challenges', 'Challenges']];
 
   function renderRituals() {
     const rt = S.state.ui.ritualsTab || 'bucket';
@@ -508,7 +542,7 @@
           e.data.plannedFor ? h('button', { class: 'text-[11px] text-rose-300 hover:underline', onclick: () => downloadIcs(e) }, 'Add to calendar') : null
         )
       ),
-      h('button', { class: 'text-xs text-slate-500 hover:text-red-400', 'aria-label': 'Remove', onclick: () => S.remove(e.id) }, '✕')
+      h('button', { class: 'text-xs text-slate-500 hover:text-red-400', 'aria-label': 'Remove', onclick: () => S.remove(e.id) }, '×')
     );
   }
 
@@ -523,7 +557,7 @@
         h('div', { class: 'min-w-0' },
           h('p', { class: 'text-xs text-rose-300' }, new Date(e.data.plannedFor + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })),
           h('p', { class: 'text-sm text-white break-words' }, e.data.text)),
-        h('button', { class: 'shrink-0 text-xs text-rose-300 hover:underline', onclick: () => downloadIcs(e) }, '📅 .ics')
+        h('button', { class: 'shrink-0 text-xs text-rose-300 hover:underline', onclick: () => downloadIcs(e) }, 'Add to calendar')
       )) : h('p', { class: 'text-xs text-slate-500' }, 'Nothing planned yet. Pick a date on any bucket list item.'));
     fill($('bucketList'), rest.length ? rest.map(bucketRow) : h('p', { class: 'text-xs text-slate-500' }, 'Add your first shared dream above.'));
     fill($('dateIdeas'), C.dateIdeas.map(t => h('button', { class: 'shrink-0 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700', onclick: () => addBucket(t) }, '+ ' + t)));
@@ -572,7 +606,7 @@
     $('checkinForm').querySelectorAll('textarea').forEach(t => { const v = t.value.trim(); if (v) data[t.dataset.key] = v; });
     if (!Object.keys(data).length) return toast('Write at least one answer first');
     S.put(`checkin:${isoWeek(new Date())}:${S.me()}`, 'checkin', data);
-    toast('Check-in saved 🗣️');
+    toast('Check-in saved');
   }
 
   // Intimacy challenges
@@ -608,7 +642,7 @@
                 title: `${who(p)}${mark(p) ? ' did this' : ''}`,
                 disabled: !isMe || i > dayIdx,
                 onclick: () => toggle(i)
-              }, paired() ? (isMe ? 'Me' : '♥') : p);
+              }, isMe && paired() ? 'Me' : initial(p));
             }))
           );
         })),
@@ -642,6 +676,23 @@
     const errorLine = h('p', { class: 'text-xs text-red-400 hidden' });
     const fail = err => { errorLine.textContent = err.message || String(err); errorLine.classList.remove('hidden'); };
 
+    // Names. Paired: each of you sets your own. Demo: both are editable here.
+    const nameField = p => h('input', {
+      maxlength: '24', placeholder: paired() ? 'Your first name' : `Name for partner ${p}`, value: nameOf(p) || '',
+      'aria-label': paired() ? 'Your name' : `Name for partner ${p}`,
+      class: 'w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-rose-500',
+      onchange: e => {
+        const name = e.target.value.trim().slice(0, 24);
+        if (name) S.put(`profile:${p}`, 'profile', { name }); else S.remove(`profile:${p}`);
+      }
+    });
+    parts.push(h('div', { class: 'space-y-2' },
+      h('p', { class: 'font-medium' }, paired() ? 'Your name' : 'Your names'),
+      paired()
+        ? h('div', { class: 'space-y-1' }, nameField(S.me()),
+            h('p', { class: 'text-xs text-slate-400' }, nameOf(other(S.me())) ? `Your partner goes by ${nameOf(other(S.me()))}.` : 'Your partner sets their own name on their phone.'))
+        : h('div', { class: 'grid grid-cols-2 gap-2' }, nameField('A'), nameField('B'))));
+
     if (!S.isConfigured()) {
       parts.push(h('div', { class: 'bg-slate-950/60 border border-slate-800 rounded-xl p-3 text-slate-300 space-y-1' },
         h('p', { class: 'font-medium' }, 'Single-device demo mode'),
@@ -649,7 +700,7 @@
     } else if (!paired()) {
       const codeInput = h('input', { inputmode: 'numeric', maxlength: '6', placeholder: '123456', class: 'flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-lg tracking-[0.4em] text-center focus:outline-none focus:border-rose-500' });
       parts.push(
-        h('div', { class: 'space-y-2' },
+        h('div', { class: 'border-t border-slate-800 pt-4 space-y-2' },
           h('p', { class: 'font-medium' }, 'Start a shared space'),
           h('p', { class: 'text-xs text-slate-400' }, "You'll get a 6-digit code (valid 24 hours) for your partner. Your current answers and notes come with you."),
           btn('Create pairing code', async () => {
@@ -661,13 +712,13 @@
           h('div', { class: 'flex gap-2' }, codeInput,
             h('button', { class: 'px-4 bg-teal-600 hover:bg-teal-500 rounded-xl text-sm font-medium', onclick: async () => {
               if (!/^\d{6}$/.test(codeInput.value.trim())) return fail(new Error('Enter the 6-digit code'));
-              try { await S.joinPair(codeInput.value); syncDailyInput(); renderSheet(); toast("You're connected 💞"); } catch (e) { fail(e); }
+              try { await S.joinPair(codeInput.value); syncDailyInput(); renderSheet(); toast("You're connected"); } catch (e) { fail(e); }
             } }, 'Join'))));
     } else {
       parts.push(h('div', { class: 'bg-slate-950/60 border border-slate-800 rounded-xl p-3 space-y-1' },
-        h('p', { class: 'font-medium' }, S.state.pairCode ? 'Waiting for your partner' : 'Paired 💞'),
+        h('p', { class: 'font-medium' }, S.state.pairCode ? 'Waiting for your partner' : 'Connected'),
         S.state.pairCode ? h('p', { class: 'text-3xl tracking-[0.3em] text-center text-rose-300 py-2 font-semibold' }, S.state.pairCode) : null,
-        S.state.pairCode ? h('p', { class: 'text-xs text-slate-400' }, 'Ask your partner to open UsTwo, tap 💞, and enter this code.') : null,
+        S.state.pairCode ? h('p', { class: 'text-xs text-slate-400' }, 'Ask your partner to open UsTwo, tap the two circles at the top, and enter this code.') : null,
         h('p', { class: 'text-xs text-slate-400' }, `Sync status: ${S.syncStatus}`)));
       parts.push(btn('Unpair this device', () => { if (confirmInline()) { S.unpair(); renderSheet(); } }, 'danger'));
     }
@@ -678,7 +729,7 @@
       h('p', { class: 'font-medium' }, 'Notifications'),
       h('p', { class: 'text-xs text-slate-400' },
         perm === 'unsupported' ? 'This browser does not support notifications.' :
-        perm === 'granted' ? 'On. You\'ll get a gentle nudge when your partner answers, drops a note, or changes their vibe while UsTwo is open in the background.' :
+        perm === 'granted' ? 'On. You\'ll get a gentle nudge when your partner answers, leaves a note, or changes their mood while UsTwo is open in the background.' :
         perm === 'denied' ? 'Blocked in browser settings.' :
         'Get a nudge when your partner answers or drops a note. Message text is never shown on the lock screen.'),
       perm === 'default' ? btn('Enable notifications', async () => { await Notification.requestPermission(); renderSheet(); }, 'ghost') : null));
@@ -705,16 +756,16 @@
   }
 
   const NOTIFY = {
-    answered: () => 'Your partner answered today\'s prompt 🔒 Answer to unlock.',
-    note: () => 'A new note landed in your Love Jar 💌',
-    vibe: e => `Your partner's vibe: ${e.data.text}`,
-    bucket: () => 'New idea on your bucket list 🪣',
-    checkin: () => 'Your partner filled in this week\'s check-in 🗣️',
-    challenge: () => 'A new challenge has started 🔥',
-    prompt: () => 'There\'s a new daily prompt ✨',
+    answered: e => `${who(e.author)} answered tonight's question. Write yours to open it.`,
+    note: e => `${who(e.author)} left you a note`,
+    vibe: e => `${who(e.author)} updated their mood`,
+    bucket: () => 'Something new on your plans list',
+    checkin: e => `${who(e.author)} filled in this week's check-in`,
+    challenge: () => 'A new challenge has started',
+    prompt: () => 'There\'s a new question for tonight',
     // Deliberately vague: these can show on a lock screen.
-    spark: () => 'Something is waiting for you in UsTwo 💗',
-    spark_done: () => 'A new memory was saved 💗'
+    spark: () => 'Something is waiting for you in UsTwo',
+    spark_done: () => 'A new memory was saved'
   };
 
   S.onRemote((e, prev) => {
@@ -766,7 +817,8 @@
 
   // Keep the open sheet's status line fresh without wiping the code input.
   function renderSheetStatus() {
-    if (paired()) renderSheet();
+    const typing = document.activeElement && $('sheet').contains(document.activeElement) && document.activeElement.tagName === 'INPUT';
+    if (paired() && !typing) renderSheet();
   }
 
   S.subscribe(render);

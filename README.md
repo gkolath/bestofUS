@@ -8,14 +8,16 @@ Builds on the single-file prototype. It adds two-phone sync, an AI communication
 
 | Area | What it does |
 |---|---|
-| **Two-phone sync** | Tap 💞, then **Create pairing code**. Your partner taps 💞 and enters the 6-digit code. Codes expire after 24 hours and work only once. Everything then syncs live over Supabase Realtime. Changes made offline are queued and sent when the connection returns. |
+| **Two-phone sync** | Tap the two-circles button at the top, then **Create pairing code**. Your partner taps the same button and enters the 6-digit code. Codes expire after 24 hours and work only once. Everything then syncs live over Supabase Realtime. Changes made offline are queued and sent when the connection returns. |
 | **Server-side blind reveal** | The database won't return your partner's answer until you've stored your own (enforced by row-level security). The original prototype only hid it in the UI. |
 | **Notifications** | When your partner answers, drops a note, changes their vibe, adds a bucket-list idea, or does a check-in, you see a toast. If notifications are allowed and the tab is in the background, you also get a system notification. Message text never appears on the lock screen. |
 | **Translate My Frustration** | Turns a heated thought into an "I feel… when… Could we…?" message, and shows the feeling, the need, and a tip. If the text suggests a safety issue, it flags it and points to support instead of coaching reconciliation. Without AI keys you get a fill-in template that's clearly labelled. |
-| **✨ Suggested prompts** | Generates five daily questions from the couple's recent answers, notes, and bucket list. Pick one and it becomes the shared prompt. |
+| **Suggested questions** | Generates five daily questions from the couple's recent answers, notes, and bucket list. Pick one and it becomes the shared prompt. |
 | **Rituals** | A shared **bucket list** where you can set a date on any item. Dated items show under Upcoming and export to your calendar as `.ics`. A **Weekly State of Us** check-in, loosely inspired by the Gottman "State of the Union" meeting (an adaptation, not their official format). **Intimacy challenges** of 5 to 7 days, where each partner ticks off their own days. |
-| **Spark (intimacy)** | Suggests one intimate idea a day, picked from both partners' pulse vibes. Each partner picks a heat level (🌹 Sweet, 🔥 Steamy or 🌶️ Scorching), and tonight uses the lower of the two. Weeknights get quicker ideas that can sit a notch below your heat. Weekend nights (Friday to Sunday) aim for your full heat and are built to be memorable. There are 33 ideas, including teasing, oral, toys, positions, edging, light restraint and role play. If either partner's vibe is "Low Battery", Spark suggests closeness only. It turns on only after both partners opt in (18+). Either partner can say "Not tonight", show a different idea, or hide an idea for good, and no reason is asked. Neither answer is shown until you've both responded. Ideas you both enjoyed are saved as memories. Everything is short text, with no images, and lock-screen notifications stay vague. |
-| **Deck** | Adds an Appreciation category to match the original blueprint. |
+| **Spark (intimacy)** | Suggests one intimate idea a day, picked from both partners' pulse vibes. Each partner picks a heat level (Sweet, Steamy or Scorching), and tonight uses the lower of the two. Weeknights get quicker ideas that can sit a notch below your heat. Weekend nights (Friday to Sunday) aim for your full heat and are built to be memorable. There are 33 ideas, including teasing, oral, toys, positions, edging, light restraint and role play. If either partner's mood is "Running on empty", Spark suggests closeness only. It turns on only after both partners opt in (18+). Either partner can say "Not tonight", show a different idea, or hide an idea for good, and no reason is asked. Neither answer is shown until you've both responded. Ideas you both enjoyed are saved as memories. Everything is short text, with no images, and lock-screen notifications stay vague. |
+| **Deck** | Adds an Appreciation category to match the original blueprint, and an After Dark category of sensual questions. |
+| **Grown-up design** | A dark plum, garnet and champagne palette, Cormorant Garamond headings with Manrope body text, line icons instead of emoji, and adult copy throughout ("Tonight's question", "Seal my answer", "Mood tonight"). Daily questions and moods are written for adults ("In the mood", "Want to be held", "Running on empty"). The colours live in `js/theme.js`. |
+| **Your names** | Each partner sets their own name in settings, and the app uses it everywhere instead of "Partner A / B". The single-device demo starts as Alex and Sam, and you can rename both. |
 | **XSS fix** | All user text is rendered with `textContent`. No user data passes through `innerHTML`. |
 
 ## Files
@@ -23,6 +25,7 @@ Builds on the single-file prototype. It adds two-phone sync, an AI communication
 ```
 index.html                         UI shell
 config.js                          Keys go here (all blank = offline mode)
+js/theme.js                        Colour palette and fonts (Tailwind config)
 js/content.js                      Prompts, decks, vibes, check-in template, challenges
 js/store.js                        Local store, outbox, Supabase sync and pairing
 js/coach.js                        AI coach client and offline fallback
@@ -36,7 +39,7 @@ supabase/functions/coach/index.ts       Edge Function that calls Claude
 
 1. **A Supabase project** (the free tier should be enough for testing).
    - In Authentication settings, **enable anonymous sign-ins**. Each phone signs in anonymously, with no email needed.
-   - Run `supabase/migrations/0001_ustwo.sql` and then `0002_spark.sql`, either in the SQL editor or with `supabase db push`.
+   - Run `supabase/migrations/0001_ustwo.sql`, then `0002_spark.sql`, then `0003_profile.sql`, either in the SQL editor or with `supabase db push`.
    - Copy the **Project URL** and the **anon / publishable key** into `config.js`. Never use the `service_role` / secret key in the app.
 2. **An Anthropic API key** for the coach, from the Claude Console with billing enabled. This key goes **only** into the Edge Function secrets, never into `config.js`:
    ```bash

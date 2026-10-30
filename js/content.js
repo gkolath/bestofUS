@@ -1,61 +1,74 @@
 // Static content: prompts, card decks, vibes, rituals.
 window.UsTwoContent = {
   dailyPrompts: [
-    "What is one small moment from this past week where you felt really connected to me?",
-    "How can I best support you or make your life 10% easier over the next few days?",
-    "What is a memory of us that always makes you smile when it pops into your head?",
-    "When do you feel most loved and desired by me?",
-    "What's something you're looking forward to that we haven't talked about yet?",
-    "What's one thing I did recently that you didn't say thank you for, but noticed?",
-    "If today had a soundtrack, what song would be playing and why?"
+    "What's one moment from this week when you wanted me and didn't say so?",
+    "What's something I do without thinking that you find unreasonably attractive?",
+    "When did you last feel truly seen by me? What was I doing?",
+    "What's one thing you'd like more of from me this week, in or out of bed?",
+    "Describe the first time you knew you wanted me. Be specific.",
+    "What part of our life together do you think we've stopped noticing?",
+    "If we had tonight completely to ourselves, no phones and no plans, how would you want it to go?",
+    "What's a fantasy you've had about us that you've never said out loud?",
+    "What's something about my body you think I don't know you love?",
+    "When do you feel most desired by me, and when do you feel least?",
+    "What's one small thing that would make you feel more looked after right now?",
+    "What do you miss about how we were at the very beginning, and what's better now?"
   ],
 
   decks: {
     deep: {
-      label: '🌊 Deep & Vulnerable',
+      label: 'Deep',
       cards: [
-        "Is there something you've been wanting to ask or tell me lately, but haven't found the right moment?",
-        "What is one fear or stressor you're carrying right now that I can help hold?",
-        "How have we grown the most as a couple in the last year?",
-        "What does emotional safety look like to you during a disagreement?"
+        "Is there something you've been wanting to ask or tell me, but haven't found the right moment?",
+        "What's a fear or worry you're carrying right now that I could help hold?",
+        "Where do you think we've grown most as a couple this year, and where have we stalled?",
+        "What does feeling safe with me look like in the middle of an argument?",
+        "What's something you need from me that you've been afraid to ask for?",
+        "When have you felt lonely in our relationship, even with me right there?"
       ]
     },
     playful: {
-      label: '✨ Playful',
+      label: 'Playful',
       cards: [
-        "If we had a free plane ticket to anywhere tomorrow morning, where are we going and what are we eating first?",
-        "What was your very first impression of me vs. what you know now?",
-        "If we swapped jobs for a week, what part of my day would drive you crazy first?",
-        "What's a weird quirk of mine that you secretly find endearing?"
+        "Free plane tickets for tomorrow morning: where are we going, and what are we eating first?",
+        "What was your first impression of me, honestly, and how wrong was it?",
+        "If we swapped lives for a week, what part of my day would break you first?",
+        "Which of my habits do you pretend to hate but secretly love?",
+        "What's the most attractive thing I've ever done without realizing it?",
+        "What song makes you think of us, and why that one?"
       ]
     },
-    spicy: {
-      label: '🔥 Intimate & Spicy',
+    afterdark: {
+      label: 'After Dark',
       cards: [
-        "What is something we haven't done in a while that you'd love to bring back into the bedroom?",
-        "What outfit or look of mine immediately catches your eye?",
-        "Describe your ideal slow, uninterrupted evening together from start to finish.",
-        "Where is your favorite place to be kissed or touched when we're winding down?"
+        "What's something we used to do in bed that you'd love to bring back?",
+        "Tell me, in detail, about the best night we've ever had together.",
+        "What's one thing you've wanted to try with me but haven't asked for yet?",
+        "Where on your body do you most want my mouth tonight?",
+        "What do I wear, or not wear, that you can't stop looking at?",
+        "Describe your perfect slow evening with me, from the first kiss to falling asleep.",
+        "What do you want me to say to you more often when we're alone?",
+        "Is there a place, outside our bedroom, where you've imagined us?"
       ]
     },
     appreciation: {
-      label: '💛 Appreciation',
+      label: 'Appreciation',
       cards: [
         "What's one strength of mine you think I underestimate?",
         "Name a time I showed up for you that you still think about.",
-        "What's something about how I love you that feels uniquely 'us'?",
-        "Finish the sentence: 'I'm proud of you for...'"
+        "What's something about the way I love you that feels completely ours?",
+        "Finish the sentence: \"I'm proud of you for...\""
       ]
     }
   },
 
   vibes: [
-    '⚡ Energized & Chatty',
-    '🌙 Quiet Cuddles',
-    '🔋 Low Battery (Need TLC)',
-    '🔥 Feeling Romantic',
-    '🧠 Heads-down, talk later',
-    '🤗 Need a hug'
+    'In the mood',
+    'Playful',
+    'Want to be held',
+    'Quiet night in',
+    'Distracted, talk later',
+    'Running on empty'
   ],
 
   // Weekly check-in, loosely inspired by the Gottman Institute's "State of the Union" meeting.
@@ -106,23 +119,23 @@ window.UsTwoContent = {
   ],
 
   // "Spark" intimacy tab. Text-only, gender-neutral wording ("one of you", "the other").
-  // heat: 1 = 🌹 Sweet (romantic, sensual), 2 = 🔥 Steamy (sexual), 3 = 🌶️ Scorching (adventurous).
+  // heat: 1 = Sweet (romantic, sensual), 2 = Steamy (sexual), 3 = Scorching (adventurous).
   // energy: the lowest shared energy it suits: 'low' | 'medium' | 'high'.
   // when: 'weekday' | 'weekend' | 'any'. kind: 'closeness' (non-sexual), 'tease', 'play', 'position'.
   spark: {
     heats: [
-      { value: 1, label: '🌹 Sweet', hint: 'Romantic and sensual' },
-      { value: 2, label: '🔥 Steamy', hint: 'Sexual, with plenty of build-up' },
-      { value: 3, label: '🌶️ Scorching', hint: 'Bold, playful, adventurous' }
+      { value: 1, label: 'Sweet', hint: 'Romantic and sensual' },
+      { value: 2, label: 'Steamy', hint: 'Sexual, with plenty of build-up' },
+      { value: 3, label: 'Scorching', hint: 'Bold, playful, adventurous' }
     ],
     // How each pulse vibe maps to energy for tonight. 'rest' means suggest only non-sexual closeness.
     vibeEnergy: {
-      '⚡ Energized & Chatty': 'high',
-      '🔥 Feeling Romantic': 'high',
-      '🌙 Quiet Cuddles': 'low',
-      '🤗 Need a hug': 'low',
-      '🧠 Heads-down, talk later': 'medium',
-      '🔋 Low Battery (Need TLC)': 'rest'
+      'In the mood': 'high',
+      'Playful': 'high',
+      'Want to be held': 'low',
+      'Quiet night in': 'low',
+      'Distracted, talk later': 'medium',
+      'Running on empty': 'rest'
     },
     ideas: [
       // ---- Closeness: the only suggestions when either of you needs rest ----
@@ -133,7 +146,7 @@ window.UsTwoContent = {
       { id: 'c-hold', kind: 'closeness', heat: 1, energy: 'low', when: 'weekday', minutes: 10,
         title: 'Fall asleep tangled', desc: 'Get into bed ten minutes early, face to face. Tell them one thing about their body you love and one thing about them you\'d never want to change. Fall asleep touching.' },
 
-      // ---- 🌹 Sweet: romantic, sensual ----
+      // ---- Sweet: romantic, sensual ----
       { id: 's-kiss', kind: 'tease', heat: 1, energy: 'low', when: 'weekday', minutes: 10,
         title: 'The ten-minute kiss', desc: 'Set a timer and do nothing but kiss for ten minutes. No hands below the neck. Slow, deep, with pauses where you just breathe on each other\'s lips. Most couples haven\'t kissed like this since the beginning.' },
       { id: 's-massage', kind: 'play', heat: 1, energy: 'low', when: 'any', minutes: 30,
@@ -147,7 +160,7 @@ window.UsTwoContent = {
       { id: 's-morning', kind: 'play', heat: 1, energy: 'low', when: 'weekend', minutes: 45,
         title: 'Lazy morning in bed', desc: 'No alarm. Wake them up with slow kisses down their neck and back, and see where the morning goes. Coffee can wait.' },
 
-      // ---- 🔥 Steamy: sexual, with build-up ----
+      // ---- Steamy: sexual, with build-up ----
       { id: 'h-text', kind: 'tease', heat: 2, energy: 'low', when: 'weekday', minutes: 0,
         title: 'Slow-burn texts', desc: 'Through the day, send three messages, each more explicit than the last, describing exactly what you\'re going to do to them tonight. Then make sure you follow through on every word.' },
       { id: 'h-shower', kind: 'play', heat: 2, energy: 'medium', when: 'weekday', minutes: 20,
@@ -173,7 +186,7 @@ window.UsTwoContent = {
       { id: 'h-behind', kind: 'position', heat: 2, energy: 'high', when: 'weekend', minutes: 25,
         title: 'From behind', desc: 'One of you on hands and knees or bent over the bed, the other behind holding their hips. Reach around to touch them too. Since you can\'t see faces, check in out loud and tell them how good it feels.' },
 
-      // ---- 🌶️ Scorching: bold, playful, adventurous ----
+      // ---- Scorching: bold, playful, adventurous ----
       { id: 'x-blindfold', kind: 'play', heat: 3, energy: 'medium', when: 'any', minutes: 40,
         title: 'Blindfolded', desc: 'Blindfold one of you with a tie or scarf. The other teases them with mouth, fingertips, ice and warm breath, never letting them guess what\'s next. Agree a word that means "pause" before you start.' },
       { id: 'x-tied', kind: 'play', heat: 3, energy: 'medium', when: 'weekend', minutes: 45,
