@@ -336,34 +336,59 @@
   }
 
   // ---------- Spark (intimacy) ----------
-  // One idea per day, picked from both partners' pulse vibes. Weekend nights (Fri to Sun) lean
-  // more adventurous. Both partners must opt in; either can pass or hide an idea, no reasons asked.
+  // One position per night, picked from both partners' moods and heat levels, plus a warm-up.
+  // Weekend nights (Fri to Sun) aim for your full heat. Positions you both marked "Want to" come
+  // first. Both partners must opt in; either can pass or hide anything, and no reasons are asked.
 
   const ENERGY = ['rest', 'low', 'medium', 'high'];
   const rank = e => ENERGY.indexOf(e);
+  C.spark.positions.forEach(p => { p.kind = 'position'; });
 
-  function sparkPick(dateStr, vibes, hidden, shuffle, heat) {
+  function dayHash(dateStr) {
+    let hash = 0;
+    for (const ch of dateStr) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+    return hash;
+  }
+
+  // opts: { wanted: Set of ids you both want to try, choose: id picked by hand for tonight }
+  function sparkPick(dateStr, vibes, hidden, shuffle, heat, opts) {
     const Sp = C.spark;
+    const o = opts || {};
+    const wanted = o.wanted || new Set();
     const day = new Date(dateStr + 'T12:00:00').getDay();
     const weekend = day === 5 || day === 6 || day === 0;
     const shared = vibes.map(v => Sp.vibeEnergy[v] || 'medium').reduce((a, b) => (rank(a) <= rank(b) ? a : b));
-    const usable = Sp.ideas.filter(i => !hidden.has(i.id) && (i.when === 'any' || i.when === (weekend ? 'weekend' : 'weekday')));
-    const closeness = usable.filter(i => i.kind === 'closeness');
-    let pool = [];
-    if (shared !== 'rest') {
-      const fits = usable.filter(i => i.kind !== 'closeness' && rank(i.energy) <= rank(shared) && i.heat <= heat);
-      // Weekends aim for your full heat; weeknights can sit one notch lower and stay short.
-      const top = Math.max(0, ...fits.map(i => i.heat));
-      pool = fits.filter(i => (weekend ? i.heat === top : i.heat >= top - 1));
-      if (!weekend) {
-        const quick = pool.filter(i => i.minutes <= 30);
-        if (quick.length) pool = quick;
-      }
+    const fitsDay = i => i.when === 'any' || i.when === (weekend ? 'weekend' : 'weekday');
+    const hash = dayHash(dateStr);
+    const at = (list, n) => list[n % list.length];
+
+    if (shared === 'rest') {
+      const closeness = Sp.ideas.filter(i => i.kind === 'closeness' && !hidden.has(i.id) && fitsDay(i));
+      const pool = closeness.length ? closeness : Sp.ideas.filter(i => i.kind === 'closeness');
+      return { idea: at(pool, hash + shuffle), warmup: null, weekend, shared, poolSize: pool.length, mutual: false };
     }
-    if (!pool.length) pool = closeness.length ? closeness : Sp.ideas.filter(i => i.kind === 'closeness');
-    let hash = 0;
-    for (const ch of dateStr) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-    return { idea: pool[(hash + shuffle) % pool.length], weekend, shared, poolSize: pool.length };
+
+    const chosen = o.choose && Sp.positions.find(p => p.id === o.choose && !hidden.has(p.id));
+    let pool = [];
+    let idea = chosen || null;
+    if (!idea) {
+      const fits = Sp.positions.filter(p => !hidden.has(p.id) && fitsDay(p) && rank(p.energy) <= rank(shared) && p.heat <= heat);
+      // Weekends aim for your full heat; weeknights can sit one notch lower and go easier on energy.
+      const top = Math.max(0, ...fits.map(p => p.heat));
+      pool = fits.filter(p => (weekend ? p.heat === top : p.heat >= top - 1));
+      if (!weekend) {
+        const easy = pool.filter(p => p.energy !== 'high');
+        if (easy.length) pool = easy;
+      }
+      if (!pool.length) pool = Sp.positions.filter(p => !hidden.has(p.id) && p.heat <= heat);
+      if (!pool.length) pool = Sp.positions.filter(p => p.heat <= heat);
+      const both = pool.filter(p => wanted.has(p.id));
+      // First suggestion of the night comes from your shared wish list when it has something that fits.
+      idea = both.length && shuffle === 0 ? at(both, hash) : at(pool, hash + shuffle);
+    }
+    const warmups = Sp.ideas.filter(i => (i.kind === 'tease' || i.kind === 'play') && !hidden.has(i.id) && i.heat <= heat && rank(i.energy) <= rank(shared) && (i.minutes || 0) <= 40 && (i.minutes || 0) > 0);
+    const warmup = warmups.length ? at(warmups, hash * 7 + shuffle) : null;
+    return { idea, warmup, weekend, shared, poolSize: Math.max(pool.length, chosen ? 2 : 0), mutual: wanted.has(idea.id) };
   }
 
   function sparkPref(p) { const e = S.get(`spark_pref:${p}`); return Object.assign({ optIn: false, hidden: [], heat: 2 }, e ? e.data : {}); }
@@ -372,7 +397,18 @@
     S.put(`spark_pref:${S.me()}`, 'spark_pref', Object.assign({}, sparkPref(S.me()), patch));
   }
 
+  // Each partner's private "positions to try" list: { want: [], maybe: [], no: [] }.
+  function wishOf(p) { const e = S.get(`spark_wish:${p}`); return Object.assign({ want: [], maybe: [], no: [] }, e ? e.data : {}); }
+
+  function setWish(id, choice) {
+    const w = wishOf(S.me());
+    const next = { want: w.want.filter(x => x !== id), maybe: w.maybe.filter(x => x !== id), no: w.no.filter(x => x !== id) };
+    if (choice && !(w[choice] || []).includes(id)) next[choice].push(id);
+    S.put(`spark_wish:${S.me()}`, 'spark_wish', next);
+  }
+
   const ENERGY_LABEL = { rest: 'resting', low: 'low-key', medium: 'warm', high: 'high' };
+  const heatLabel = v => (C.spark.heats.find(x => x.value === v) || {}).label;
 
   function renderSpark() {
     const me = S.me();
@@ -383,12 +419,12 @@
 
     if (!mine.optIn) {
       fill(body, h('div', { class: 'bg-slate-900 border border-fuchsia-500/30 rounded-2xl p-5 space-y-3' },
-        h('h3', { class: 'serif text-lg text-white' }, 'Spark'),
-        h('p', { class: 'text-sm text-slate-300' }, 'One intimate idea a day, picked from both your moods: something easy on weeknights and something more memorable on weekends.'),
+        h('h3', { class: 'serif text-2xl text-white' }, 'Spark'),
+        h('p', { class: 'text-sm text-slate-300' }, 'A position for tonight, picked from both your moods and how horny you each are. Quick and easy on weeknights, bolder on weekends. Plus a private list where you each mark what you want to try, and only your matches are revealed.'),
         h('ul', { class: 'text-xs text-slate-400 space-y-1 list-disc pl-4' },
           h('li', {}, 'For adults only. It switches on only when both of you turn it on.'),
-          h('li', {}, 'Either of you can say "not tonight" or hide an idea for good, and no reason is needed.'),
-          h('li', {}, 'Ideas are short text descriptions. There are no images.')),
+          h('li', {}, 'Either of you can say "not tonight" or hide anything for good, and no reason is needed.'),
+          h('li', {}, 'Everything is written descriptions. There are no images.')),
         h('button', { class: 'w-full py-2.5 bg-fuchsia-700 hover:bg-fuchsia-600 text-white font-medium text-sm rounded-xl', onclick: () => setSparkPref({ optIn: true }) },
           paired() ? "I'm 18+ and want Spark on" : `Turn on Spark for ${who(me)} (18+)`)
       ));
@@ -396,7 +432,7 @@
     }
     if (!theirs.optIn) {
       fill(body, h('div', { class: 'bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3' },
-        h('h3', { class: 'serif text-lg text-white' }, 'Spark is on for you'),
+        h('h3', { class: 'serif text-xl text-white' }, 'Spark is on for you'),
         h('p', { class: 'text-sm text-slate-300' }, paired()
           ? 'It will start once your partner turns it on too. We don\'t send them a reminder, so bring it up when it feels right.'
           : `Switch to ${who(them)} at the top and turn it on there too.`),
@@ -407,12 +443,15 @@
 
     const date = todayStr();
     const vibes = ['A', 'B'].map(p => (S.get(`vibe:${p}`) || { data: { text: '' } }).data.text);
-    const hidden = new Set([...(mine.hidden || []), ...(theirs.hidden || [])]);
+    const myWish = wishOf(me);
+    const theirWish = wishOf(them);
+    const wanted = new Set(myWish.want.filter(id => theirWish.want.includes(id)));
+    const hidden = new Set([...(mine.hidden || []), ...(theirs.hidden || []), ...myWish.no, ...theirWish.no]);
     const pickEntry = S.get(`spark_pick:${date}`);
-    const shuffle = pickEntry ? pickEntry.data.shuffle : 0;
+    const shuffle = pickEntry ? pickEntry.data.shuffle || 0 : 0;
+    const choose = pickEntry ? pickEntry.data.choose : null;
     const heat = Math.min(mine.heat, theirs.heat);
-    const heatInfo = C.spark.heats.find(x => x.value === heat);
-    const { idea, weekend, shared, poolSize } = sparkPick(date, vibes, hidden, shuffle, heat);
+    const { idea, warmup, weekend, shared, poolSize, mutual } = sparkPick(date, vibes, hidden, shuffle, heat, { wanted, choose });
 
     const resp = p => { const e = S.get(`spark:${date}:${p}`); return e && e.data.itemId === idea.id ? e.data.choice : null; };
     const myChoice = resp(me);
@@ -420,11 +459,11 @@
     const done = S.get(`spark_done:${date}`);
 
     const respond = choice => S.put(`spark:${date}:${me}`, 'spark', { itemId: idea.id, choice });
-    const shuffleIdea = () => S.put(`spark_pick:${date}`, 'spark_pick', { shuffle: shuffle + 1 }, { keepAuthor: true });
+    const setPick = patch => S.put(`spark_pick:${date}`, 'spark_pick', Object.assign({ shuffle, choose: null }, patch), { keepAuthor: true });
 
     let status;
     if (done && done.data.itemId === idea.id) {
-      status = h('p', { class: 'text-sm text-emerald-300' }, 'Saved to your memories');
+      status = h('p', { class: 'text-sm text-teal-300' }, 'Saved to your memories');
     } else if (!myChoice) {
       status = h('p', { class: 'text-xs text-slate-400' }, theirChoice ? `${who(them)} has responded. Answer to see where you both are.` : 'Neither answer is shown until you\'ve both responded.');
     } else if (!theirChoice) {
@@ -438,48 +477,97 @@
       status = h('p', { class: 'text-sm text-slate-300' }, 'Not tonight, and that\'s completely fine. A cuddle or an early night counts too.');
     }
 
-    const cuesFor = { closeness: 'Closeness', tease: 'Tease', play: 'Play', position: 'Position' };
-    const memories = S.all('spark_done').slice(0, 8);
+    const isPosition = idea.kind === 'position';
+    const card = h('div', { class: 'bg-gradient-to-br from-fuchsia-950/50 via-slate-900 to-slate-900 border border-fuchsia-500/30 rounded-3xl p-6 space-y-4 shadow-xl' },
+      h('div', { class: 'flex justify-between items-baseline gap-2' },
+        h('span', { class: 'eyebrow font-semibold text-fuchsia-300' }, isPosition ? `Tonight's position · ${heatLabel(idea.heat)}` : 'Tonight · Closeness'),
+        mutual ? h('span', { class: 'text-[11px] text-teal-300' }, 'You both want this') : null),
+      h('h3', { class: 'serif text-3xl text-white leading-tight' }, idea.title),
+      h('p', { class: 'text-sm text-slate-200 leading-relaxed' }, idea.desc),
+      isPosition ? h('ol', { class: 'space-y-1.5 text-sm text-slate-300' }, idea.how.map((step, i) =>
+        h('li', { class: 'flex gap-3' }, h('span', { class: 'serif text-fuchsia-300 w-4 shrink-0' }, String(i + 1)), h('span', {}, step)))) : null,
+      isPosition ? h('div', { class: 'grid grid-cols-2 gap-2' }, idea.roles.map(([label, text]) =>
+        h('div', { class: 'bg-slate-950/60 border border-slate-800 rounded-xl p-3' },
+          h('p', { class: 'eyebrow text-slate-400 mb-1' }, label),
+          h('p', { class: 'text-xs text-slate-200 leading-relaxed' }, text)))) : null,
+      isPosition && idea.tip ? h('p', { class: 'text-xs text-slate-300' }, h('span', { class: 'text-teal-300' }, 'Make it better  '), idea.tip) : null,
+      warmup ? h('div', { class: 'border-t border-fuchsia-500/20 pt-3' },
+        h('p', { class: 'eyebrow text-slate-400 mb-1' }, 'Warm up first'),
+        h('p', { class: 'text-sm text-white' }, warmup.title),
+        h('p', { class: 'text-xs text-slate-400 leading-relaxed' }, warmup.desc)) : null,
+      shared === 'rest' ? h('p', { class: 'text-xs text-amber-300' }, 'One of you is running on empty, so tonight is about closeness only.') : null,
+      h('div', { class: 'grid grid-cols-2 gap-2' },
+        h('button', { class: 'py-2.5 rounded-xl text-sm font-medium ' + (myChoice === 'in' ? 'bg-fuchsia-600 text-white ring-2 ring-fuchsia-300' : 'bg-fuchsia-700/80 hover:bg-fuchsia-600 text-white'), onclick: () => respond('in') }, "I'm in"),
+        h('button', { class: 'py-2.5 rounded-xl text-sm font-medium ' + (myChoice === 'pass' ? 'bg-slate-600 text-white ring-2 ring-slate-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'), onclick: () => respond('pass') }, 'Not tonight')),
+      status,
+      h('div', { class: 'flex justify-between text-xs pt-1' },
+        poolSize > 1 ? h('button', { class: 'text-slate-300 hover:text-white', onclick: () => setPick({ shuffle: shuffle + 1, choose: null }) }, 'Roll again') : h('span', {}),
+        h('button', { class: 'text-slate-500 hover:text-red-300', onclick: () => setSparkPref({ hidden: [...new Set([...(mine.hidden || []), idea.id])] }) }, 'Not for us, hide it'))
+    );
 
+    const myHeat = C.spark.heats.find(x => x.value === mine.heat);
+    const heatPicker = h('div', { class: 'bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-2' },
+      h('p', { class: 'text-xs text-slate-300' }, paired() ? 'How horny are you tonight?' : `How horny is ${who(me)} tonight?`),
+      h('div', { class: 'grid grid-cols-3 gap-2' }, C.spark.heats.map(x =>
+        h('button', {
+          class: 'rounded-xl px-2 py-2 text-xs border transition ' + (mine.heat === x.value ? 'bg-fuchsia-700 border-fuchsia-400 text-white' : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-fuchsia-500/50'),
+          title: x.hint, onclick: () => setSparkPref({ heat: x.value })
+        }, x.label))),
+      h('p', { class: 'text-[11px] text-slate-400' }, myHeat ? myHeat.hint + '.' : ''),
+      h('p', { class: 'text-[11px] text-slate-500' }, 'Tonight uses the lower of your two levels, so nobody is pushed past where they want to go. Your partner only sees the result.'));
+
+    // Positions to try: each partner marks privately; only mutual "Want to" is revealed.
+    const level = S.state.ui.sparkLevel || mine.heat;
+    const matches = C.spark.positions.filter(p => wanted.has(p.id));
+    const mark = (p, choice, label) => {
+      const on = (myWish[choice] || []).includes(p.id);
+      return h('button', {
+        class: 'px-2.5 py-1 rounded-lg text-[11px] border transition ' + (on ? (choice === 'no' ? 'bg-slate-700 border-slate-500 text-white' : 'bg-fuchsia-700 border-fuchsia-400 text-white') : 'border-slate-700 text-slate-400 hover:text-slate-200'),
+        'aria-pressed': on ? 'true' : 'false',
+        onclick: () => setWish(p.id, on ? null : choice)
+      }, label);
+    };
+    const library = h('div', { class: 'space-y-3' },
+      h('div', {},
+        h('h4', { class: 'eyebrow font-semibold text-slate-400' }, 'Positions to try'),
+        h('p', { class: 'text-[11px] text-slate-500 mt-1' }, `Mark each one privately. ${paired() ? 'Your partner' : who(them)} only sees a position when you've both said "Want to". "Not for me" keeps it out of tonight's picks without telling them why.`)),
+      matches.length ? h('div', { class: 'bg-slate-900 border border-teal-500/30 rounded-2xl p-3 space-y-2' },
+        h('p', { class: 'text-xs text-teal-300' }, `You both want to try ${matches.length === 1 ? 'this' : 'these'}`),
+        matches.map(p => h('div', { class: 'flex justify-between items-center gap-2' },
+          h('span', { class: 'text-sm text-slate-100' }, p.title),
+          p.id === idea.id ? h('span', { class: 'text-[11px] text-slate-500' }, 'Tonight') :
+            h('button', { class: 'text-[11px] px-2.5 py-1 rounded-lg bg-fuchsia-700 hover:bg-fuchsia-600 text-white', onclick: () => setPick({ choose: p.id }) }, 'Make it tonight')))) : null,
+      h('div', { class: 'flex gap-2' }, C.spark.heats.map(x =>
+        h('button', { class: chip(level === x.value), onclick: () => S.setUi({ sparkLevel: x.value }) }, x.label))),
+      h('div', { class: 'space-y-2' }, C.spark.positions.filter(p => p.heat === level).map(p =>
+        h('div', { class: 'bg-slate-900/80 border border-slate-800 rounded-xl p-3 space-y-2' },
+          h('details', {},
+            h('summary', { class: 'cursor-pointer list-none' },
+              h('p', { class: 'text-sm text-slate-100' }, p.title),
+              h('p', { class: 'text-xs text-slate-400' }, p.desc)),
+            h('ol', { class: 'mt-2 space-y-1 text-xs text-slate-300 list-decimal pl-4' }, p.how.map(step => h('li', {}, step)))),
+          h('div', { class: 'flex gap-2' }, mark(p, 'want', 'Want to'), mark(p, 'maybe', 'Maybe'), mark(p, 'no', 'Not for me'))))));
+
+    const memories = S.all('spark_done').slice(0, 8);
     fill(body,
       h('div', { class: 'flex flex-wrap gap-2 text-[11px]' },
         h('span', { class: 'px-2 py-0.5 rounded-full border border-fuchsia-500/40 text-fuchsia-200' }, weekend ? 'Weekend night' : 'Weeknight'),
-        h('span', { class: 'px-2 py-0.5 rounded-full border border-fuchsia-500/40 text-fuchsia-200' }, `Heat: ${heatInfo.label}`),
+        h('span', { class: 'px-2 py-0.5 rounded-full border border-fuchsia-500/40 text-fuchsia-200' }, `Level: ${heatLabel(heat)}`),
         h('span', { class: 'px-2 py-0.5 rounded-full border border-slate-700 text-slate-300' }, `Shared energy: ${ENERGY_LABEL[shared]}`),
         h('span', { class: 'px-2 py-0.5 rounded-full border border-slate-700 text-slate-400' }, `Your moods: ${vibes.filter(Boolean).join(' + ') || 'not set'}`)),
-      h('div', { class: 'bg-gradient-to-br from-fuchsia-950/50 via-slate-900 to-slate-900 border border-fuchsia-500/30 rounded-3xl p-6 space-y-4 shadow-xl' },
-        h('div', { class: 'flex justify-between items-baseline text-xs' },
-          h('span', { class: 'uppercase tracking-widest text-fuchsia-300 font-semibold' }, `Tonight · ${cuesFor[idea.kind]}`),
-          h('span', { class: 'text-slate-400' }, idea.minutes ? `~${idea.minutes} min` : 'all day')),
-        h('h3', { class: 'serif text-2xl text-white' }, idea.title),
-        h('p', { class: 'text-sm text-slate-200 leading-relaxed' }, idea.desc),
-        shared === 'rest' ? h('p', { class: 'text-xs text-amber-300' }, 'One of you is running on empty, so tonight is about closeness only.') : null,
-        h('div', { class: 'grid grid-cols-2 gap-2' },
-          h('button', { class: 'py-2.5 rounded-xl text-sm font-medium ' + (myChoice === 'in' ? 'bg-fuchsia-600 text-white ring-2 ring-fuchsia-300' : 'bg-fuchsia-700/80 hover:bg-fuchsia-600 text-white'), onclick: () => respond('in') }, "I'm in"),
-          h('button', { class: 'py-2.5 rounded-xl text-sm font-medium ' + (myChoice === 'pass' ? 'bg-slate-600 text-white ring-2 ring-slate-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'), onclick: () => respond('pass') }, 'Not tonight')),
-        status,
-        h('div', { class: 'flex justify-between text-xs pt-1' },
-          poolSize > 1 ? h('button', { class: 'text-slate-400 hover:text-white', onclick: shuffleIdea }, 'Something else') : h('span', {}),
-          h('button', { class: 'text-slate-500 hover:text-red-300', onclick: () => setSparkPref({ hidden: [...new Set([...(mine.hidden || []), idea.id])] }) }, 'Not for us, hide it'))
-      ),
-      h('div', { class: 'bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-2' },
-        h('p', { class: 'text-xs text-slate-300' }, `${paired() ? 'Your' : who(me) + "'s"} heat level`),
-        h('div', { class: 'grid grid-cols-3 gap-2' }, C.spark.heats.map(x =>
-          h('button', {
-            class: 'rounded-xl px-2 py-2 text-xs border transition ' + (mine.heat === x.value ? 'bg-fuchsia-700 border-fuchsia-400 text-white' : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-fuchsia-500/50'),
-            title: x.hint, onclick: () => setSparkPref({ heat: x.value })
-          }, x.label))),
-        h('p', { class: 'text-[11px] text-slate-500' }, 'Tonight uses the lower of your two settings, so nobody is pushed past where they want to go. Your partner only sees the result.')),
-      h('p', { class: 'text-[11px] text-slate-500' }, 'Change tonight\'s idea by changing your mood at the top. Go slow, keep checking in, and stop whenever either of you wants to.'),
+      card,
+      heatPicker,
+      h('p', { class: 'text-[11px] text-slate-500' }, 'Change tonight\'s pick by changing your mood at the top. Go slow, keep checking in, and stop whenever either of you wants to.'),
+      library,
       h('div', {},
         h('h4', { class: 'eyebrow font-semibold text-slate-400 mb-2' }, 'Our memories'),
         memories.length ? h('div', { class: 'space-y-2' }, memories.map(m =>
           h('div', { class: 'bg-slate-900/80 border border-slate-800 rounded-xl px-3 py-2 flex justify-between text-sm' },
             h('span', { class: 'text-slate-200' }, m.data.title),
             h('span', { class: 'text-xs text-slate-500' }, new Date(m.id.split(':')[1] + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })))))
-          : h('p', { class: 'text-xs text-slate-500' }, 'Ideas you both enjoyed will be saved here.')),
+          : h('p', { class: 'text-xs text-slate-500' }, 'Positions you both enjoyed will be saved here.')),
       h('div', { class: 'flex justify-between text-xs text-slate-500 border-t border-slate-800 pt-3' },
-        (mine.hidden || []).length ? h('button', { class: 'hover:text-slate-300', onclick: () => setSparkPref({ hidden: [] }) }, `Unhide ${(mine.hidden || []).length} idea(s) you hid`) : h('span', {}),
+        (mine.hidden || []).length ? h('button', { class: 'hover:text-slate-300', onclick: () => setSparkPref({ hidden: [] }) }, `Unhide ${(mine.hidden || []).length} you hid`) : h('span', {}),
         h('button', { class: 'hover:text-slate-300', onclick: () => setSparkPref({ optIn: false }) }, 'Turn Spark off'))
     );
   }
@@ -765,13 +853,21 @@
     prompt: () => 'There\'s a new question for tonight',
     // Deliberately vague: these can show on a lock screen.
     spark: () => 'Something is waiting for you in UsTwo',
-    spark_done: () => 'A new memory was saved'
+    spark_done: () => 'A new memory was saved',
+    // Only fires when a partner's change creates a new mutual match (see below).
+    spark_wish: () => 'You have a new match in Spark'
   };
 
   S.onRemote((e, prev) => {
     const make = NOTIFY[e.kind];
     if (!make) return;
     if (e.kind === 'bucket' && prev) return; // only new ideas, not edits
+    if (e.kind === 'spark_wish') {
+      // Stay silent unless their change matched something I already want.
+      const mineWant = wishOf(S.me()).want;
+      const before = new Set(prev && !prev.deleted ? (prev.data.want || []) : []);
+      if (!(e.data.want || []).some(id => !before.has(id) && mineWant.includes(id))) return;
+    }
     const msg = make(e);
     toast(msg);
     if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
