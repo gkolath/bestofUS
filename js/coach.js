@@ -4,7 +4,7 @@
   const cfg = window.USTWO_CONFIG || {};
   const store = () => window.UsTwoStore;
 
-  function aiAvailable() { return store().isConfigured() && !!cfg.COACH_FUNCTION; }
+  function aiAvailable() { return !!cfg.COACH_ENABLED && store().isConfigured() && !!cfg.COACH_FUNCTION; }
 
   async function invoke(body) {
     const sb = store().client || (await ensureClient());

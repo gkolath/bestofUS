@@ -164,18 +164,19 @@
     return svg;
   }
 
+  const coachOn = !!(window.USTWO_CONFIG || {}).COACH_ENABLED;
   const TABS = [
     ['daily', 'Tonight'],
     ['deck', 'Cards'],
     ['jar', 'Notes'],
     ['spark', 'Spark'],
-    ['coach', 'Coach'],
+    coachOn ? ['coach', 'Coach'] : null,
     ['rituals', 'Rituals']
-  ];
+  ].filter(Boolean);
 
   function renderNav() {
-    const tab = S.state.ui.tab;
-    TABS.forEach(([t]) => $(`tab-${t}`).classList.toggle('hidden', t !== tab));
+    const tab = TABS.some(([t]) => t === S.state.ui.tab) ? S.state.ui.tab : 'daily';
+    ['daily', 'deck', 'jar', 'spark', 'coach', 'rituals'].forEach(t => $(`tab-${t}`).classList.toggle('hidden', t !== tab));
     const switched = changed('tab', tab);
     fill($('navBar'), TABS.map(([t, label]) => {
       const active = t === tab;
@@ -308,7 +309,7 @@
     try {
       const res = await Coach.generatePrompts();
       fill(box,
-        h('p', { class: 'text-xs text-slate-400' }, res.offline ? 'From the built-in pool (AI coach not configured):' : 'Pick one for today:'),
+        h('p', { class: 'text-xs text-slate-400' }, res.offline ? 'Pick one from the built-in questions:' : 'Pick one for today:'),
         (res.prompts || []).map(t => h('button', {
           class: 'block w-full text-left text-sm bg-slate-950/70 border border-slate-800 hover:border-rose-500/60 rounded-xl px-3 py-2',
           onclick: () => setPrompt(t)
