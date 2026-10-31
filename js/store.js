@@ -70,8 +70,11 @@
     const key = uid();
     s.entries['prompt:current'] = { id: 'prompt:current', kind: 'prompt', author: 'A', data: { key, text: C.dailyPrompts[0] }, deleted: false, updated_at: now };
     s.entries['vibe:A'] = { id: 'vibe:A', kind: 'vibe', author: 'A', data: { text: C.vibes[0] }, deleted: false, updated_at: now };
-    s.entries['vibe:B'] = { id: 'vibe:B', kind: 'vibe', author: 'B', data: { text: C.vibes[1] }, deleted: false, updated_at: now };
-    s.entries['note:welcome'] = { id: 'note:welcome', kind: 'note', author: 'B', data: { text: 'Loved having morning coffee together before the day got crazy.' }, deleted: false, updated_at: new Date(Date.now() - 864e5).toISOString() };
+    s.entries['vibe:B'] = { id: 'vibe:B', kind: 'vibe', author: 'B', data: { text: C.vibes[3] }, deleted: false, updated_at: now };
+    // Placeholder names for the demo; each partner can change theirs in settings.
+    s.entries['profile:A'] = { id: 'profile:A', kind: 'profile', author: 'A', data: { name: 'Alex' }, deleted: false, updated_at: now };
+    s.entries['profile:B'] = { id: 'profile:B', kind: 'profile', author: 'B', data: { name: 'Sam' }, deleted: false, updated_at: now };
+    s.entries['note:welcome'] = { id: 'note:welcome', kind: 'note', author: 'B', data: { text: 'Still thinking about last night. Come home early.' }, deleted: false, updated_at: new Date(Date.now() - 864e5).toISOString() };
     return s;
   }
 
@@ -234,7 +237,7 @@
     const row = Array.isArray(data) ? data[0] : data;
     state.mode = 'paired'; state.role = 'A'; state.coupleId = row.couple_id; state.pairCode = row.code;
     // Upload A's existing entries. Partner B's simulated demo data stays local-only.
-    state.outbox = Object.values(state.entries).filter(e => e.author === 'A');
+    state.outbox = Object.values(state.entries).filter(e => e.author === 'A' && !e.id.endsWith(':B'));
     persist();
     await connect();
     return row.code;

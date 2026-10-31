@@ -1,6 +1,6 @@
 // UsTwo service worker: shows notifications and keeps the app shell available offline.
-const CACHE = 'ustwo-v2';
-const SHELL = ['./', 'index.html', 'config.js', 'js/content.js', 'js/store.js', 'js/coach.js', 'js/app.js', 'icon.svg', 'manifest.webmanifest'];
+const CACHE = 'ustwo-v3';
+const SHELL = ['./', 'index.html', 'config.js', 'js/theme.js', 'js/content.js', 'js/store.js', 'js/coach.js', 'js/app.js', 'icon.svg', 'manifest.webmanifest'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

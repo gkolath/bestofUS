@@ -28,12 +28,20 @@
 
   const paired = () => S.state.mode === 'paired';
   const other = p => (p === 'A' ? 'B' : 'A');
-  function who(p) {
-    if (!paired()) return `Partner ${p}`;
-    return p === S.me() ? 'You' : 'Your partner';
+  // Names come from each partner's 'profile:<A|B>' entry; set them in the settings sheet.
+  function nameOf(p) {
+    const e = S.get(`profile:${p}`);
+    const n = e && e.data && typeof e.data.name === 'string' ? e.data.name.trim() : '';
+    return n || null;
   }
-  // Mid-sentence form: "your partner" when paired, "Partner B" in the demo.
-  const whoInline = p => (paired() ? who(p).toLowerCase() : who(p));
+  function who(p) {
+    if (!paired()) return nameOf(p) || `Partner ${p}`;
+    if (p === S.me()) return 'You';
+    return nameOf(p) || 'Your partner';
+  }
+  // Mid-sentence form: "your partner" rather than "Your partner"; names stay as they are.
+  const whoInline = p => { const w = who(p); return w === 'You' || w === 'Your partner' ? w.toLowerCase() : w; };
+  const initial = p => (nameOf(p) || p).charAt(0).toUpperCase();
 
   function ago(iso) {
     if (!iso) return '';
@@ -63,34 +71,123 @@
   function toast(msg) {
     $('toastText').textContent = msg;
     $('toast').classList.remove('hidden');
+    replay($('toastText'), 'anim-toast');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => $('toast').classList.add('hidden'), 2600);
   }
 
+  // ---------- Motion ----------
+  // The UI re-renders on every change, so animations only replay when the value they follow changes.
+
+  const reduceMotion = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  function replay(el, cls) {
+    if (!el) return;
+    el.classList.remove(cls);
+    void el.offsetWidth; // restart the CSS animation
+    el.classList.add(cls);
+  }
+
+  const seen = {};
+  // True when `value` differs from what we saw last time for `key` (never on the first sighting).
+  function changed(key, value) {
+    const had = Object.prototype.hasOwnProperty.call(seen, key);
+    const was = seen[key];
+    seen[key] = value;
+    return had && was !== value;
+  }
+
+  const BURST_COLOURS = ['#d36f87', '#e49aab', '#dcbf8a', '#b94a66', '#c9a66b', '#a98bc4'];
+  // A little celebration: dots, streaks and hearts flying out from the middle of `el`.
+  function burst(el) {
+    if (!el || reduceMotion()) return;
+    const r = el.getBoundingClientRect();
+    const box = h('div', { class: 'burst', 'aria-hidden': 'true' });
+    box.style.left = `${r.left + r.width / 2}px`;
+    box.style.top = `${r.top + Math.min(r.height / 2, 160)}px`;
+    for (let i = 0; i < 26; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 70 + Math.random() * 110;
+      const colour = BURST_COLOURS[i % BURST_COLOURS.length];
+      const kind = i % 3;
+      let p;
+      if (kind === 2) {
+        p = h('i', {});
+        const NS = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(NS, 'svg');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        const path = document.createElementNS(NS, 'path');
+        path.setAttribute('d', 'M12 21s-7-4.5-9.5-9A5.5 5.5 0 0 1 12 6a5.5 5.5 0 0 1 9.5 6c-2.5 4.5-9.5 9-9.5 9z');
+        path.setAttribute('fill', colour);
+        svg.appendChild(path);
+        p.appendChild(svg);
+      } else {
+        p = h('i', { class: kind === 0 ? 'dot' : 'bar' });
+        p.style.background = colour;
+      }
+      p.style.setProperty('--dx', `${Math.cos(angle) * dist}px`);
+      p.style.setProperty('--dy', `${Math.sin(angle) * dist - 30}px`);
+      p.style.setProperty('--rot', `${Math.round(Math.random() * 540 - 270)}deg`);
+      p.style.animationDelay = `${Math.round(Math.random() * 90)}ms`;
+      box.appendChild(p);
+    }
+    document.body.appendChild(box);
+    setTimeout(() => box.remove(), 1300);
+  }
+
   const chip = (active) => active
-    ? 'shrink-0 px-3 py-1.5 rounded-xl text-xs font-medium bg-rose-600 text-white'
-    : 'shrink-0 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700';
+    ? 'shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium bg-gradient-to-r from-rose-600 to-violet-600 text-white shadow-md shadow-rose-950'
+    : 'shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10';
 
   // ---------- Navigation ----------
 
+  // Line icons, built as SVG elements: [tag, attributes] per shape.
+  const ICONS = {
+    daily: [['path', { d: 'M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z' }]],
+    deck: [['rect', { x: 4, y: 6, width: 12, height: 15, rx: 2 }], ['path', { d: 'M8 3h10a2 2 0 0 1 2 2v13' }]],
+    jar: [['rect', { x: 3, y: 5, width: 18, height: 14, rx: 2 }], ['path', { d: 'M3 7l9 6 9-6' }]],
+    spark: [['path', { d: 'M12 3c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-3-1-5.5 1-8.5z' }]],
+    coach: [['path', { d: 'M4 5h16v11H9l-5 4z' }]],
+    rituals: [['rect', { x: 3, y: 5, width: 18, height: 16, rx: 2 }], ['path', { d: 'M3 10h18M8 3v4M16 3v4' }]]
+  };
+  function icon(name) {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('class', 'icon');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    ICONS[name].forEach(([tag, attrs]) => {
+      const el = document.createElementNS(NS, tag);
+      Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+      svg.appendChild(el);
+    });
+    return svg;
+  }
+
   const TABS = [
-    ['daily', '🔒', 'Daily'],
-    ['deck', '🃏', 'Deck'],
-    ['jar', '🫙', 'Love Jar'],
-    ['spark', '🕯️', 'Spark'],
-    ['coach', '🕊️', 'Coach'],
-    ['rituals', '🗓️', 'Rituals']
+    ['daily', 'Tonight'],
+    ['deck', 'Cards'],
+    ['jar', 'Notes'],
+    ['spark', 'Spark'],
+    ['coach', 'Coach'],
+    ['rituals', 'Rituals']
   ];
 
   function renderNav() {
     const tab = S.state.ui.tab;
     TABS.forEach(([t]) => $(`tab-${t}`).classList.toggle('hidden', t !== tab));
-    fill($('navBar'), TABS.map(([t, icon, label]) =>
-      h('button', {
-        class: 'flex flex-col items-center gap-1 px-1 ' + (t === tab ? 'text-rose-400' : 'text-slate-400 hover:text-slate-200'),
+    const switched = changed('tab', tab);
+    fill($('navBar'), TABS.map(([t, label]) => {
+      const active = t === tab;
+      const pill = h('span', { class: 'grid place-items-center w-12 h-8 rounded-full transition-colors duration-300 ' + (active ? 'bg-gradient-to-r from-rose-600/45 to-violet-600/40 text-rose-100' : '') }, icon(t));
+      if (active && switched) replay(pill, 'anim-pop');
+      return h('button', {
+        class: 'flex flex-col items-center gap-0.5 px-0.5 ' + (active ? 'text-rose-200' : 'text-slate-500 hover:text-slate-200'),
+        'aria-current': active ? 'page' : null,
         onclick: () => S.setUi({ tab: t })
-      }, h('span', { class: 'text-lg' }, icon), h('span', { class: 'text-[11px] font-medium' }, label))
-    ));
+      }, pill, h('span', { class: 'text-[10px] font-medium tracking-wider uppercase' }, label));
+    }));
+    if (switched) replay($(`tab-${tab}`), 'anim-rise');
   }
 
   // ---------- Header & pulse ----------
@@ -100,13 +197,15 @@
     $('partnerSwitcher').classList.toggle('hidden', paired());
     $('btnPartnerA').className = 'px-3 py-1 rounded-full text-xs font-medium transition ' + (isA ? 'bg-rose-500 text-white' : 'text-slate-400 hover:text-white');
     $('btnPartnerB').className = 'px-3 py-1 rounded-full text-xs font-medium transition ' + (!isA ? 'bg-teal-600 text-white' : 'text-slate-400 hover:text-white');
-    $('activePartnerLabel').textContent = paired() ? '' : `Acting as Partner ${S.me()}`;
+    $('btnPartnerA').textContent = who('A');
+    $('btnPartnerB').textContent = who('B');
+    $('activePartnerLabel').textContent = paired() ? '' : `As ${who(S.me())}`;
 
     const labels = {
-      offline: paired() ? '⚪ Offline, changes will sync later' : 'Single-device demo',
-      connecting: '🟡 Connecting…',
-      live: S.state.pairCode ? '🟡 Waiting for your partner to join' : '🟢 Synced with your partner',
-      error: '🔴 Sync problem, retrying'
+      offline: paired() ? 'Offline · changes will sync later' : 'Just the two of you',
+      connecting: 'Connecting…',
+      live: S.state.pairCode ? 'Waiting for your partner to join' : 'Together · in sync',
+      error: 'Sync issue · retrying'
     };
     $('syncLabel').textContent = labels[paired() ? S.syncStatus : 'offline'];
   }
@@ -114,13 +213,14 @@
   function renderPulse() {
     ['A', 'B'].forEach(p => {
       const v = S.get(`vibe:${p}`);
-      $(`vibeLabel${p}`).textContent = `${who(p)}'s Vibe`;
+      $(`vibeLabel${p}`).textContent = who(p);
       $(`status${p}`).textContent = v ? v.data.text : '—';
+      if (changed(`vibe:${p}`, v ? v.data.text : '')) replay($(`status${p}`).parentElement, 'anim-pop');
     });
     const mine = S.get(`vibe:${S.me()}`);
     fill($('vibeButtons'), C.vibes.map(v =>
       h('button', {
-        class: 'shrink-0 px-3 py-1.5 rounded-lg border transition ' + (mine && mine.data.text === v ? 'bg-rose-600/30 border-rose-500/60' : 'bg-slate-800 hover:bg-slate-700 border-slate-700'),
+        class: 'shrink-0 px-3.5 py-1.5 rounded-full border ' + (mine && mine.data.text === v ? 'bg-gradient-to-r from-rose-600/50 to-violet-600/50 border-rose-400/60 text-white' : 'bg-white/5 hover:bg-white/10 border-white/10'),
         onclick: () => S.put(`vibe:${S.me()}`, 'vibe', { text: v })
       }, v)
     ));
@@ -143,9 +243,11 @@
     const both = !!(mine && theirsMarked);
 
     const badge = $('revealStatusBadge');
-    badge.textContent = both ? '✨ Unlocked! Both answered' : '🔒 Blind Mode: Both must answer to reveal';
-    badge.className = both ? 'text-xs text-emerald-400 font-medium' : 'text-xs text-amber-400';
-    $('btnLockIn').textContent = mine ? 'Update My Answer' : 'Lock In Answer';
+    badge.textContent = both ? 'Revealed' : 'Sealed until you both answer';
+    badge.className = both ? 'text-xs text-teal-300 font-medium' : 'text-xs text-slate-400';
+    const justRevealed = changed(`reveal:${key}:${me}`, both) && both;
+    if (justRevealed) { replay($(`ansDisplay${other(me)}`), 'anim-reveal'); replay(badge, 'anim-pop'); burst(badge); }
+    $('btnLockIn').textContent = mine ? 'Rewrite my answer' : 'Seal my answer';
 
     ['A', 'B'].forEach(x => {
       $(`ansLabel${x}`).textContent = who(x);
@@ -153,7 +255,7 @@
       const ans = S.get(`answer:${key}:${x}`);
       const marked = S.get(`answered:${key}:${x}`);
       if (x === me) {
-        disp.textContent = ans ? ans.data.text : 'Not answered yet';
+        disp.textContent = ans ? ans.data.text : 'Not written yet';
         disp.className = ans ? 'text-sm text-slate-100' : 'text-sm text-slate-400 italic';
       } else if (both && ans) {
         disp.textContent = ans.data.text;
@@ -162,7 +264,7 @@
         disp.textContent = 'Unlocking…';
         disp.className = 'text-sm text-slate-400 italic';
       } else {
-        disp.textContent = marked ? '🔒 Answered (submit yours to unlock)' : `Waiting for ${whoInline(x)}...`;
+        disp.textContent = marked ? 'Sealed. Write yours to open it.' : `Waiting for ${whoInline(x)}...`;
         disp.className = 'text-sm text-slate-400 italic';
       }
     });
@@ -183,7 +285,7 @@
     S.put(`answered:${key}:${me}`, 'answered', { promptKey: key });
     // Server only reveals the partner's answer after ours is stored; fetch it now.
     if (paired()) setTimeout(() => S.pull(), 800);
-    toast('Answer locked in 🔒');
+    toast('Sealed');
   }
 
   function setPrompt(text) {
@@ -202,7 +304,7 @@
   async function suggestPrompts() {
     const box = $('promptSuggestions');
     box.classList.remove('hidden');
-    fill(box, h('p', { class: 'text-xs text-slate-400' }, Coach.aiAvailable() ? '✨ Writing prompts from your history…' : 'Shuffling the prompt pool…'));
+    fill(box, h('p', { class: 'text-xs text-slate-400' }, Coach.aiAvailable() ? 'Writing questions from your history…' : 'Shuffling questions…'));
     try {
       const res = await Coach.generatePrompts();
       fill(box,
@@ -225,6 +327,7 @@
     const deck = C.decks[deckCategory] || C.decks.deep;
     $('cardCategoryBadge').textContent = deck.label;
     $('cardText').textContent = `"${deck.cards[cardIndex % deck.cards.length]}"`;
+    if (changed('card', `${deckCategory}:${cardIndex}`)) replay($('deckCard'), 'anim-flip');
     fill($('deckCategories'), Object.entries(C.decks).map(([k, d]) =>
       h('button', { class: chip(k === deckCategory), onclick: () => S.setUi({ deckCategory: k, cardIndex: 0 }) }, d.label)
     ));
@@ -234,18 +337,20 @@
 
   function renderJar() {
     const notes = S.all('note');
+    const fresh = changed('topNote', notes[0] ? notes[0].id : '');
     fill($('jarList'), notes.length ? notes.map(n =>
-      h('div', { class: 'bg-slate-900/80 border border-slate-800 p-3.5 rounded-xl' },
+      h('div', { class: 'bg-slate-900/50 backdrop-blur-md border border-white/10 p-3.5 rounded-xl' },
         h('div', { class: 'flex justify-between text-xs text-slate-400 mb-1' },
           h('span', { class: 'font-medium text-teal-400' }, who(n.author)),
           h('span', { class: 'flex gap-3' },
             h('span', {}, ago(n.updated_at)),
-            n.author === S.me() ? h('button', { class: 'hover:text-red-400', 'aria-label': 'Delete note', onclick: () => S.remove(n.id) }, '✕') : null
+            n.author === S.me() ? h('button', { class: 'hover:text-red-400', 'aria-label': 'Delete note', onclick: () => S.remove(n.id) }, '×') : null
           )
         ),
         h('p', { class: 'text-sm text-slate-200 whitespace-pre-wrap break-words' }, n.data.text)
       )
-    ) : h('p', { class: 'text-sm text-slate-500 text-center py-6' }, 'The jar is empty. Drop the first note!'));
+    ) : h('p', { class: 'text-sm text-slate-500 text-center py-6' }, 'No notes yet. Leave the first one.'));
+    if (fresh && notes.length) replay($('jarList').firstElementChild, 'anim-in');
   }
 
   function addJarNote() {
@@ -254,7 +359,7 @@
     if (!val) return;
     S.put(`note:${S.uid()}`, 'note', { text: val });
     input.value = '';
-    toast('Note dropped 💌');
+    toast('Note left');
   }
 
   // ---------- Coach ----------
@@ -290,7 +395,7 @@
           h('div', { class: 'bg-slate-950/60 border border-slate-800 rounded-xl p-2' }, h('p', { class: 'text-slate-400' }, 'Feeling'), h('p', { class: 'text-slate-100' }, r.feeling)),
           h('div', { class: 'bg-slate-950/60 border border-slate-800 rounded-xl p-2' }, h('p', { class: 'text-slate-400' }, 'Need'), h('p', { class: 'text-slate-100' }, r.need))
         ),
-        h('p', { class: 'text-xs text-slate-300' }, '💡 ', r.tip),
+        h('p', { class: 'text-xs text-slate-300' }, h('span', { class: 'text-teal-300' }, 'Tip  '), r.tip),
         (r.extraTips || []).map(t => h('p', { class: 'text-xs text-slate-400' }, '• ', t)),
         h('button', { class: 'w-full py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm', onclick: copy }, 'Copy message')
       );
@@ -302,34 +407,59 @@
   }
 
   // ---------- Spark (intimacy) ----------
-  // One idea per day, picked from both partners' pulse vibes. Weekend nights (Fri to Sun) lean
-  // more adventurous. Both partners must opt in; either can pass or hide an idea, no reasons asked.
+  // One position per night, picked from both partners' moods and heat levels, plus a warm-up.
+  // Weekend nights (Fri to Sun) aim for your full heat. Positions you both marked "Want to" come
+  // first. Both partners must opt in; either can pass or hide anything, and no reasons are asked.
 
   const ENERGY = ['rest', 'low', 'medium', 'high'];
   const rank = e => ENERGY.indexOf(e);
+  C.spark.positions.forEach(p => { p.kind = 'position'; });
 
-  function sparkPick(dateStr, vibes, hidden, shuffle, heat) {
+  function dayHash(dateStr) {
+    let hash = 0;
+    for (const ch of dateStr) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+    return hash;
+  }
+
+  // opts: { wanted: Set of ids you both want to try, choose: id picked by hand for tonight }
+  function sparkPick(dateStr, vibes, hidden, shuffle, heat, opts) {
     const Sp = C.spark;
+    const o = opts || {};
+    const wanted = o.wanted || new Set();
     const day = new Date(dateStr + 'T12:00:00').getDay();
     const weekend = day === 5 || day === 6 || day === 0;
     const shared = vibes.map(v => Sp.vibeEnergy[v] || 'medium').reduce((a, b) => (rank(a) <= rank(b) ? a : b));
-    const usable = Sp.ideas.filter(i => !hidden.has(i.id) && (i.when === 'any' || i.when === (weekend ? 'weekend' : 'weekday')));
-    const closeness = usable.filter(i => i.kind === 'closeness');
-    let pool = [];
-    if (shared !== 'rest') {
-      const fits = usable.filter(i => i.kind !== 'closeness' && rank(i.energy) <= rank(shared) && i.heat <= heat);
-      // Weekends aim for your full heat; weeknights can sit one notch lower and stay short.
-      const top = Math.max(0, ...fits.map(i => i.heat));
-      pool = fits.filter(i => (weekend ? i.heat === top : i.heat >= top - 1));
-      if (!weekend) {
-        const quick = pool.filter(i => i.minutes <= 30);
-        if (quick.length) pool = quick;
-      }
+    const fitsDay = i => i.when === 'any' || i.when === (weekend ? 'weekend' : 'weekday');
+    const hash = dayHash(dateStr);
+    const at = (list, n) => list[n % list.length];
+
+    if (shared === 'rest') {
+      const closeness = Sp.ideas.filter(i => i.kind === 'closeness' && !hidden.has(i.id) && fitsDay(i));
+      const pool = closeness.length ? closeness : Sp.ideas.filter(i => i.kind === 'closeness');
+      return { idea: at(pool, hash + shuffle), warmup: null, weekend, shared, poolSize: pool.length, mutual: false };
     }
-    if (!pool.length) pool = closeness.length ? closeness : Sp.ideas.filter(i => i.kind === 'closeness');
-    let hash = 0;
-    for (const ch of dateStr) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-    return { idea: pool[(hash + shuffle) % pool.length], weekend, shared, poolSize: pool.length };
+
+    const chosen = o.choose && Sp.positions.find(p => p.id === o.choose && !hidden.has(p.id));
+    let pool = [];
+    let idea = chosen || null;
+    if (!idea) {
+      const fits = Sp.positions.filter(p => !hidden.has(p.id) && fitsDay(p) && rank(p.energy) <= rank(shared) && p.heat <= heat);
+      // Weekends aim for your full heat; weeknights can sit one notch lower and go easier on energy.
+      const top = Math.max(0, ...fits.map(p => p.heat));
+      pool = fits.filter(p => (weekend ? p.heat === top : p.heat >= top - 1));
+      if (!weekend) {
+        const easy = pool.filter(p => p.energy !== 'high');
+        if (easy.length) pool = easy;
+      }
+      if (!pool.length) pool = Sp.positions.filter(p => !hidden.has(p.id) && p.heat <= heat);
+      if (!pool.length) pool = Sp.positions.filter(p => p.heat <= heat);
+      const both = pool.filter(p => wanted.has(p.id));
+      // First suggestion of the night comes from your shared wish list when it has something that fits.
+      idea = both.length && shuffle === 0 ? at(both, hash) : at(pool, hash + shuffle);
+    }
+    const warmups = Sp.ideas.filter(i => (i.kind === 'tease' || i.kind === 'play') && !hidden.has(i.id) && i.heat <= heat && rank(i.energy) <= rank(shared) && (i.minutes || 0) <= 40 && (i.minutes || 0) > 0);
+    const warmup = warmups.length ? at(warmups, hash * 7 + shuffle) : null;
+    return { idea, warmup, weekend, shared, poolSize: Math.max(pool.length, chosen ? 2 : 0), mutual: wanted.has(idea.id) };
   }
 
   function sparkPref(p) { const e = S.get(`spark_pref:${p}`); return Object.assign({ optIn: false, hidden: [], heat: 2 }, e ? e.data : {}); }
@@ -338,7 +468,18 @@
     S.put(`spark_pref:${S.me()}`, 'spark_pref', Object.assign({}, sparkPref(S.me()), patch));
   }
 
+  // Each partner's private "positions to try" list: { want: [], maybe: [], no: [] }.
+  function wishOf(p) { const e = S.get(`spark_wish:${p}`); return Object.assign({ want: [], maybe: [], no: [] }, e ? e.data : {}); }
+
+  function setWish(id, choice) {
+    const w = wishOf(S.me());
+    const next = { want: w.want.filter(x => x !== id), maybe: w.maybe.filter(x => x !== id), no: w.no.filter(x => x !== id) };
+    if (choice && !(w[choice] || []).includes(id)) next[choice].push(id);
+    S.put(`spark_wish:${S.me()}`, 'spark_wish', next);
+  }
+
   const ENERGY_LABEL = { rest: 'resting', low: 'low-key', medium: 'warm', high: 'high' };
+  const heatLabel = v => (C.spark.heats.find(x => x.value === v) || {}).label;
 
   function renderSpark() {
     const me = S.me();
@@ -348,21 +489,21 @@
     const body = $('sparkBody');
 
     if (!mine.optIn) {
-      fill(body, h('div', { class: 'bg-slate-900 border border-fuchsia-500/30 rounded-2xl p-5 space-y-3' },
-        h('h3', { class: 'serif text-lg text-white' }, 'Spark'),
-        h('p', { class: 'text-sm text-slate-300' }, 'One intimate idea a day, picked from both your moods: something easy on weeknights and something more memorable on weekends.'),
+      fill(body, h('div', { class: 'bg-slate-900/55 backdrop-blur-md border border-fuchsia-500/30 rounded-3xl p-5 space-y-3' },
+        h('h3', { class: 'serif text-2xl text-white' }, 'Spark'),
+        h('p', { class: 'text-sm text-slate-300' }, 'A position for tonight, picked from both your moods and how horny you each are. Quick and easy on weeknights, bolder on weekends. Plus a private list where you each mark what you want to try, and only your matches are revealed.'),
         h('ul', { class: 'text-xs text-slate-400 space-y-1 list-disc pl-4' },
           h('li', {}, 'For adults only. It switches on only when both of you turn it on.'),
-          h('li', {}, 'Either of you can say "not tonight" or hide an idea for good, and no reason is needed.'),
-          h('li', {}, 'Ideas are short text descriptions. There are no images.')),
+          h('li', {}, 'Either of you can say "not tonight" or hide anything for good, and no reason is needed.'),
+          h('li', {}, 'Everything is written descriptions. There are no images.')),
         h('button', { class: 'w-full py-2.5 bg-fuchsia-700 hover:bg-fuchsia-600 text-white font-medium text-sm rounded-xl', onclick: () => setSparkPref({ optIn: true }) },
           paired() ? "I'm 18+ and want Spark on" : `Turn on Spark for ${who(me)} (18+)`)
       ));
       return;
     }
     if (!theirs.optIn) {
-      fill(body, h('div', { class: 'bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3' },
-        h('h3', { class: 'serif text-lg text-white' }, 'Spark is on for you'),
+      fill(body, h('div', { class: 'bg-slate-900/55 backdrop-blur-md border border-white/10 rounded-3xl p-5 space-y-3' },
+        h('h3', { class: 'serif text-xl text-white' }, 'Spark is on for you'),
         h('p', { class: 'text-sm text-slate-300' }, paired()
           ? 'It will start once your partner turns it on too. We don\'t send them a reminder, so bring it up when it feels right.'
           : `Switch to ${who(them)} at the top and turn it on there too.`),
@@ -373,12 +514,15 @@
 
     const date = todayStr();
     const vibes = ['A', 'B'].map(p => (S.get(`vibe:${p}`) || { data: { text: '' } }).data.text);
-    const hidden = new Set([...(mine.hidden || []), ...(theirs.hidden || [])]);
+    const myWish = wishOf(me);
+    const theirWish = wishOf(them);
+    const wanted = new Set(myWish.want.filter(id => theirWish.want.includes(id)));
+    const hidden = new Set([...(mine.hidden || []), ...(theirs.hidden || []), ...myWish.no, ...theirWish.no]);
     const pickEntry = S.get(`spark_pick:${date}`);
-    const shuffle = pickEntry ? pickEntry.data.shuffle : 0;
+    const shuffle = pickEntry ? pickEntry.data.shuffle || 0 : 0;
+    const choose = pickEntry ? pickEntry.data.choose : null;
     const heat = Math.min(mine.heat, theirs.heat);
-    const heatInfo = C.spark.heats.find(x => x.value === heat);
-    const { idea, weekend, shared, poolSize } = sparkPick(date, vibes, hidden, shuffle, heat);
+    const { idea, warmup, weekend, shared, poolSize, mutual } = sparkPick(date, vibes, hidden, shuffle, heat, { wanted, choose });
 
     const resp = p => { const e = S.get(`spark:${date}:${p}`); return e && e.data.itemId === idea.id ? e.data.choice : null; };
     const myChoice = resp(me);
@@ -386,73 +530,134 @@
     const done = S.get(`spark_done:${date}`);
 
     const respond = choice => S.put(`spark:${date}:${me}`, 'spark', { itemId: idea.id, choice });
-    const shuffleIdea = () => S.put(`spark_pick:${date}`, 'spark_pick', { shuffle: shuffle + 1 }, { keepAuthor: true });
+    const setPick = patch => S.put(`spark_pick:${date}`, 'spark_pick', Object.assign({ shuffle, choose: null }, patch), { keepAuthor: true });
 
     let status;
     if (done && done.data.itemId === idea.id) {
-      status = h('p', { class: 'text-sm text-emerald-300' }, 'Saved to your memories ✨');
+      status = h('p', { class: 'text-sm text-teal-300' }, 'Saved to your memories');
     } else if (!myChoice) {
       status = h('p', { class: 'text-xs text-slate-400' }, theirChoice ? `${who(them)} has responded. Answer to see where you both are.` : 'Neither answer is shown until you\'ve both responded.');
     } else if (!theirChoice) {
       status = h('p', { class: 'text-xs text-slate-400' }, `You said ${myChoice === 'in' ? '"I\'m in"' : '"not tonight"'}. Waiting for ${whoInline(them)}.`);
     } else if (myChoice === 'in' && theirChoice === 'in') {
       status = h('div', { class: 'space-y-2' },
-        h('p', { class: 'text-sm text-fuchsia-200 font-medium' }, "It's a yes from both of you 💞"),
+        h('p', { 'data-yes': '1', class: 'text-sm text-fuchsia-200 font-medium' }, 'You both said yes.'),
         h('button', { class: 'w-full py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm',
           onclick: () => S.put(`spark_done:${date}`, 'spark_done', { itemId: idea.id, title: idea.title }) }, 'We did it, save the memory'));
     } else {
       status = h('p', { class: 'text-sm text-slate-300' }, 'Not tonight, and that\'s completely fine. A cuddle or an early night counts too.');
     }
 
-    const cuesFor = { closeness: 'Closeness', tease: 'Tease', play: 'Play', position: 'Position' };
-    const memories = S.all('spark_done').slice(0, 8);
+    const isPosition = idea.kind === 'position';
+    const card = h('div', { class: 'glow bg-gradient-to-br from-fuchsia-950/50 via-slate-900/70 to-slate-900/50 backdrop-blur-md border border-fuchsia-500/30 rounded-3xl p-6 space-y-4 shadow-xl' },
+      h('div', { class: 'flex justify-between items-baseline gap-2' },
+        h('span', { class: 'eyebrow font-semibold text-fuchsia-300' }, isPosition ? `Tonight's position · ${heatLabel(idea.heat)}` : 'Tonight · Closeness'),
+        mutual ? h('span', { class: 'text-[11px] text-teal-300' }, 'You both want this') : null),
+      h('h3', { class: 'serif text-3xl text-white leading-tight' }, idea.title),
+      h('p', { class: 'text-sm text-slate-200 leading-relaxed' }, idea.desc),
+      isPosition ? h('ol', { class: 'space-y-1.5 text-sm text-slate-300' }, idea.how.map((step, i) =>
+        h('li', { class: 'flex gap-3' }, h('span', { class: 'serif text-fuchsia-300 w-4 shrink-0' }, String(i + 1)), h('span', {}, step)))) : null,
+      isPosition ? h('div', { class: 'grid grid-cols-2 gap-2' }, idea.roles.map(([label, text]) =>
+        h('div', { class: 'bg-slate-950/60 border border-slate-800 rounded-xl p-3' },
+          h('p', { class: 'eyebrow text-slate-400 mb-1' }, label),
+          h('p', { class: 'text-xs text-slate-200 leading-relaxed' }, text)))) : null,
+      isPosition && idea.tip ? h('p', { class: 'text-xs text-slate-300' }, h('span', { class: 'text-teal-300' }, 'Make it better  '), idea.tip) : null,
+      warmup ? h('div', { class: 'border-t border-fuchsia-500/20 pt-3' },
+        h('p', { class: 'eyebrow text-slate-400 mb-1' }, 'Warm up first'),
+        h('p', { class: 'text-sm text-white' }, warmup.title),
+        h('p', { class: 'text-xs text-slate-400 leading-relaxed' }, warmup.desc)) : null,
+      shared === 'rest' ? h('p', { class: 'text-xs text-amber-300' }, 'One of you is running on empty, so tonight is about closeness only.') : null,
+      h('div', { class: 'grid grid-cols-2 gap-2' },
+        h('button', { class: 'py-3 rounded-full text-sm font-medium ' + (myChoice === 'in' ? 'bg-gradient-to-r from-rose-500 to-violet-500 text-white ring-2 ring-fuchsia-200/70' : 'bg-gradient-to-r from-rose-600 to-violet-600 hover:brightness-110 text-white'), onclick: () => respond('in') }, "I'm in"),
+        h('button', { class: 'py-3 rounded-full text-sm font-medium ' + (myChoice === 'pass' ? 'bg-slate-600 text-white ring-2 ring-slate-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'), onclick: () => respond('pass') }, 'Not tonight')),
+      status,
+      h('div', { class: 'flex justify-between text-xs pt-1' },
+        poolSize > 1 ? h('button', { class: 'text-slate-300 hover:text-white', onclick: () => setPick({ shuffle: shuffle + 1, choose: null }) }, 'Roll again') : h('span', {}),
+        h('button', { class: 'text-slate-500 hover:text-red-300', onclick: () => setSparkPref({ hidden: [...new Set([...(mine.hidden || []), idea.id])] }) }, 'Not for us, hide it'))
+    );
 
+    const myHeat = C.spark.heats.find(x => x.value === mine.heat);
+    const heatPicker = h('div', { class: 'bg-slate-900/55 backdrop-blur-md border border-white/10 rounded-3xl p-3 space-y-2' },
+      h('p', { class: 'text-xs text-slate-300' }, paired() ? 'How horny are you tonight?' : `How horny is ${who(me)} tonight?`),
+      h('div', { class: 'grid grid-cols-3 gap-2' }, C.spark.heats.map(x =>
+        h('button', {
+          class: 'rounded-full px-2 py-2 text-xs border ' + (mine.heat === x.value ? 'bg-gradient-to-r from-rose-600 to-violet-600 border-fuchsia-300/60 text-white shadow-lg shadow-fuchsia-950' : 'bg-white/5 border-white/10 text-slate-300 hover:border-fuchsia-500/50'),
+          'aria-pressed': mine.heat === x.value ? 'true' : 'false',
+          title: x.hint, onclick: () => setSparkPref({ heat: x.value })
+        }, x.label))),
+      h('p', { class: 'text-[11px] text-slate-400' }, myHeat ? myHeat.hint + '.' : ''),
+      h('p', { class: 'text-[11px] text-slate-500' }, 'Tonight uses the lower of your two levels, so nobody is pushed past where they want to go. Your partner only sees the result.'));
+
+    // Positions to try: each partner marks privately; only mutual "Want to" is revealed.
+    const level = S.state.ui.sparkLevel || mine.heat;
+    const matches = C.spark.positions.filter(p => wanted.has(p.id));
+    const mark = (p, choice, label) => {
+      const on = (myWish[choice] || []).includes(p.id);
+      return h('button', {
+        class: 'px-2.5 py-1 rounded-lg text-[11px] border transition ' + (on ? (choice === 'no' ? 'bg-slate-700 border-slate-500 text-white' : 'bg-fuchsia-700 border-fuchsia-400 text-white') : 'border-slate-700 text-slate-400 hover:text-slate-200'),
+        'aria-pressed': on ? 'true' : 'false',
+        onclick: () => setWish(p.id, on ? null : choice)
+      }, label);
+    };
+    const library = h('div', { class: 'space-y-3' },
+      h('div', {},
+        h('h4', { class: 'eyebrow font-semibold text-slate-400' }, 'Positions to try'),
+        h('p', { class: 'text-[11px] text-slate-500 mt-1' }, `Mark each one privately. ${paired() ? 'Your partner' : who(them)} only sees a position when you've both said "Want to". "Not for me" keeps it out of tonight's picks without telling them why.`)),
+      matches.length ? h('div', { 'data-matches': '1', class: 'bg-slate-900/55 backdrop-blur-md border border-teal-500/30 rounded-3xl p-3 space-y-2' },
+        h('p', { class: 'text-xs text-teal-300' }, `You both want to try ${matches.length === 1 ? 'this' : 'these'}`),
+        matches.map(p => h('div', { class: 'flex justify-between items-center gap-2' },
+          h('span', { class: 'text-sm text-slate-100' }, p.title),
+          p.id === idea.id ? h('span', { class: 'text-[11px] text-slate-500' }, 'Tonight') :
+            h('button', { class: 'text-[11px] px-2.5 py-1 rounded-lg bg-fuchsia-700 hover:bg-fuchsia-600 text-white', onclick: () => setPick({ choose: p.id }) }, 'Make it tonight')))) : null,
+      h('div', { class: 'flex gap-2' }, C.spark.heats.map(x =>
+        h('button', { class: chip(level === x.value), onclick: () => S.setUi({ sparkLevel: x.value }) }, x.label))),
+      h('div', { class: 'space-y-2' }, C.spark.positions.filter(p => p.heat === level).map(p =>
+        h('div', { class: 'bg-slate-900/50 backdrop-blur-md border border-white/10 rounded-xl p-3 space-y-2' },
+          h('details', {},
+            h('summary', { class: 'cursor-pointer list-none' },
+              h('p', { class: 'text-sm text-slate-100' }, p.title),
+              h('p', { class: 'text-xs text-slate-400' }, p.desc)),
+            h('ol', { class: 'mt-2 space-y-1 text-xs text-slate-300 list-decimal pl-4' }, p.how.map(step => h('li', {}, step)))),
+          h('div', { class: 'flex gap-2' }, mark(p, 'want', 'Want to'), mark(p, 'maybe', 'Maybe'), mark(p, 'no', 'Not for me'))))));
+
+    const memories = S.all('spark_done').slice(0, 8);
+    const bothYes = myChoice === 'in' && theirChoice === 'in';
+    const ideaChanged = changed(`sparkIdea:${me}`, idea.id);
+    const yesNow = changed(`sparkYes:${me}:${idea.id}`, bothYes) && bothYes;
+    const prevMatches = seen[`sparkMatches:${me}`];
+    seen[`sparkMatches:${me}`] = matches.length;
+    const newMatch = prevMatches !== undefined && matches.length > prevMatches;
+    const heatChanged = changed(`heat:${me}`, mine.heat);
     fill(body,
       h('div', { class: 'flex flex-wrap gap-2 text-[11px]' },
         h('span', { class: 'px-2 py-0.5 rounded-full border border-fuchsia-500/40 text-fuchsia-200' }, weekend ? 'Weekend night' : 'Weeknight'),
-        h('span', { class: 'px-2 py-0.5 rounded-full border border-fuchsia-500/40 text-fuchsia-200' }, `Heat: ${heatInfo.label}`),
+        h('span', { class: 'px-2 py-0.5 rounded-full border border-fuchsia-500/40 text-fuchsia-200' }, `Level: ${heatLabel(heat)}`),
         h('span', { class: 'px-2 py-0.5 rounded-full border border-slate-700 text-slate-300' }, `Shared energy: ${ENERGY_LABEL[shared]}`),
-        h('span', { class: 'px-2 py-0.5 rounded-full border border-slate-700 text-slate-400' }, `From your pulse: ${vibes.filter(Boolean).join(' + ') || 'not set'}`)),
-      h('div', { class: 'bg-gradient-to-br from-fuchsia-950/50 via-slate-900 to-slate-900 border border-fuchsia-500/30 rounded-3xl p-6 space-y-4 shadow-xl' },
-        h('div', { class: 'flex justify-between items-baseline text-xs' },
-          h('span', { class: 'uppercase tracking-widest text-fuchsia-300 font-semibold' }, `Tonight · ${cuesFor[idea.kind]}`),
-          h('span', { class: 'text-slate-400' }, idea.minutes ? `~${idea.minutes} min` : 'all day')),
-        h('h3', { class: 'serif text-2xl text-white' }, idea.title),
-        h('p', { class: 'text-sm text-slate-200 leading-relaxed' }, idea.desc),
-        shared === 'rest' ? h('p', { class: 'text-xs text-amber-300' }, 'One of you is low on battery, so tonight is about closeness only.') : null,
-        h('div', { class: 'grid grid-cols-2 gap-2' },
-          h('button', { class: 'py-2.5 rounded-xl text-sm font-medium ' + (myChoice === 'in' ? 'bg-fuchsia-600 text-white ring-2 ring-fuchsia-300' : 'bg-fuchsia-700/80 hover:bg-fuchsia-600 text-white'), onclick: () => respond('in') }, "I'm in 💗"),
-          h('button', { class: 'py-2.5 rounded-xl text-sm font-medium ' + (myChoice === 'pass' ? 'bg-slate-600 text-white ring-2 ring-slate-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'), onclick: () => respond('pass') }, 'Not tonight')),
-        status,
-        h('div', { class: 'flex justify-between text-xs pt-1' },
-          poolSize > 1 ? h('button', { class: 'text-slate-400 hover:text-white', onclick: shuffleIdea }, 'Show a different idea ↻') : h('span', {}),
-          h('button', { class: 'text-slate-500 hover:text-red-300', onclick: () => setSparkPref({ hidden: [...new Set([...(mine.hidden || []), idea.id])] }) }, 'Not for us, hide it'))
-      ),
-      h('div', { class: 'bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-2' },
-        h('p', { class: 'text-xs text-slate-300' }, `${paired() ? 'Your' : who(me) + "'s"} heat level`),
-        h('div', { class: 'grid grid-cols-3 gap-2' }, C.spark.heats.map(x =>
-          h('button', {
-            class: 'rounded-xl px-2 py-2 text-xs border transition ' + (mine.heat === x.value ? 'bg-fuchsia-700 border-fuchsia-400 text-white' : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-fuchsia-500/50'),
-            title: x.hint, onclick: () => setSparkPref({ heat: x.value })
-          }, x.label))),
-        h('p', { class: 'text-[11px] text-slate-500' }, 'Tonight uses the lower of your two settings, so nobody is pushed past where they want to go. Your partner only sees the result.')),
-      h('p', { class: 'text-[11px] text-slate-500' }, 'Change tonight\'s idea by updating your vibe at the top. Go slow, keep checking in, and stop whenever either of you wants to.'),
+        h('span', { class: 'px-2 py-0.5 rounded-full border border-slate-700 text-slate-400' }, `Your moods: ${vibes.filter(Boolean).join(' + ') || 'not set'}`)),
+      card,
+      heatPicker,
+      h('p', { class: 'text-[11px] text-slate-500' }, 'Change tonight\'s pick by changing your mood at the top. Go slow, keep checking in, and stop whenever either of you wants to.'),
+      library,
       h('div', {},
-        h('h4', { class: 'text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2' }, 'Our memories'),
+        h('h4', { class: 'eyebrow font-semibold text-slate-400 mb-2' }, 'Our memories'),
         memories.length ? h('div', { class: 'space-y-2' }, memories.map(m =>
-          h('div', { class: 'bg-slate-900/80 border border-slate-800 rounded-xl px-3 py-2 flex justify-between text-sm' },
+          h('div', { class: 'bg-slate-900/50 backdrop-blur-md border border-white/10 rounded-xl px-3 py-2 flex justify-between text-sm' },
             h('span', { class: 'text-slate-200' }, m.data.title),
             h('span', { class: 'text-xs text-slate-500' }, new Date(m.id.split(':')[1] + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })))))
-          : h('p', { class: 'text-xs text-slate-500' }, 'Ideas you both enjoyed will be saved here.')),
+          : h('p', { class: 'text-xs text-slate-500' }, 'Positions you both enjoyed will be saved here.')),
       h('div', { class: 'flex justify-between text-xs text-slate-500 border-t border-slate-800 pt-3' },
-        (mine.hidden || []).length ? h('button', { class: 'hover:text-slate-300', onclick: () => setSparkPref({ hidden: [] }) }, `Unhide ${(mine.hidden || []).length} idea(s) you hid`) : h('span', {}),
+        (mine.hidden || []).length ? h('button', { class: 'hover:text-slate-300', onclick: () => setSparkPref({ hidden: [] }) }, `Unhide ${(mine.hidden || []).length} you hid`) : h('span', {}),
         h('button', { class: 'hover:text-slate-300', onclick: () => setSparkPref({ optIn: false }) }, 'Turn Spark off'))
     );
+    if (ideaChanged) replay(card, 'anim-flip');
+    if (yesNow) burst(card.querySelector('[data-yes]') || card);
+    if (newMatch) { const box = body.querySelector('[data-matches]'); replay(box, 'anim-pop'); burst(box); }
+    if (heatChanged) replay(heatPicker.querySelector('[aria-pressed="true"]'), 'anim-pop');
   }
 
   // ---------- Rituals ----------
 
-  const RITUALS = [['bucket', '🪣 Bucket & Dates'], ['checkin', '🗣️ Weekly Check-in'], ['challenges', '🔥 Challenges']];
+  const RITUALS = [['bucket', 'Plans & dates'], ['checkin', 'Weekly check-in'], ['challenges', 'Challenges']];
 
   function renderRituals() {
     const rt = S.state.ui.ritualsTab || 'bucket';
@@ -498,7 +703,7 @@
       class: 'bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-200',
       onchange: ev => updateBucket(e, { plannedFor: ev.target.value || null })
     });
-    return h('div', { class: 'bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex items-start gap-3' },
+    return h('div', { class: 'bg-slate-900/50 backdrop-blur-md border border-white/10 rounded-xl p-3 flex items-start gap-3' },
       h('input', { type: 'checkbox', class: 'mt-1 accent-rose-500', checked: e.data.done, 'aria-label': 'Done', onchange: ev => updateBucket(e, { done: ev.target.checked }) }),
       h('div', { class: 'flex-1 min-w-0' },
         h('p', { class: 'text-sm break-words ' + (e.data.done ? 'line-through text-slate-500' : 'text-slate-100') }, e.data.text),
@@ -508,7 +713,7 @@
           e.data.plannedFor ? h('button', { class: 'text-[11px] text-rose-300 hover:underline', onclick: () => downloadIcs(e) }, 'Add to calendar') : null
         )
       ),
-      h('button', { class: 'text-xs text-slate-500 hover:text-red-400', 'aria-label': 'Remove', onclick: () => S.remove(e.id) }, '✕')
+      h('button', { class: 'text-xs text-slate-500 hover:text-red-400', 'aria-label': 'Remove', onclick: () => S.remove(e.id) }, '×')
     );
   }
 
@@ -523,7 +728,7 @@
         h('div', { class: 'min-w-0' },
           h('p', { class: 'text-xs text-rose-300' }, new Date(e.data.plannedFor + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })),
           h('p', { class: 'text-sm text-white break-words' }, e.data.text)),
-        h('button', { class: 'shrink-0 text-xs text-rose-300 hover:underline', onclick: () => downloadIcs(e) }, '📅 .ics')
+        h('button', { class: 'shrink-0 text-xs text-rose-300 hover:underline', onclick: () => downloadIcs(e) }, 'Add to calendar')
       )) : h('p', { class: 'text-xs text-slate-500' }, 'Nothing planned yet. Pick a date on any bucket list item.'));
     fill($('bucketList'), rest.length ? rest.map(bucketRow) : h('p', { class: 'text-xs text-slate-500' }, 'Add your first shared dream above.'));
     fill($('dateIdeas'), C.dateIdeas.map(t => h('button', { class: 'shrink-0 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700', onclick: () => addBucket(t) }, '+ ' + t)));
@@ -553,14 +758,14 @@
     const past = S.all('checkin').filter(e => !e.id.startsWith(`checkin:${week}:`)).slice(0, 8);
     fill($('checkinHistory'), past.length ? past.map(e => {
       const wk = e.id.split(':')[1];
-      return h('details', { class: 'bg-slate-900/80 border border-slate-800 rounded-xl p-3' },
+      return h('details', { class: 'bg-slate-900/50 backdrop-blur-md border border-white/10 rounded-xl p-3' },
         h('summary', { class: 'text-xs text-slate-300 cursor-pointer' }, `${wk} · ${who(e.author)}`),
         checkinCard(e, null));
     }) : h('p', { class: 'text-xs text-slate-500' }, 'Your past check-ins will appear here.'));
   }
 
   function checkinCard(e, title) {
-    return h('div', { class: title ? 'bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2' : 'mt-2 space-y-2' },
+    return h('div', { class: title ? 'bg-slate-900/55 backdrop-blur-md border border-white/10 rounded-3xl p-4 space-y-2' : 'mt-2 space-y-2' },
       title ? h('h4', { class: 'text-sm font-semibold text-teal-300' }, title) : null,
       C.checkinTemplate.filter(f => e.data[f.key]).map(f =>
         h('div', {}, h('p', { class: 'text-[11px] text-slate-400' }, f.label), h('p', { class: 'text-sm text-slate-200 whitespace-pre-wrap break-words' }, e.data[f.key])))
@@ -572,7 +777,7 @@
     $('checkinForm').querySelectorAll('textarea').forEach(t => { const v = t.value.trim(); if (v) data[t.dataset.key] = v; });
     if (!Object.keys(data).length) return toast('Write at least one answer first');
     S.put(`checkin:${isoWeek(new Date())}:${S.me()}`, 'checkin', data);
-    toast('Check-in saved 🗣️');
+    toast('Check-in saved');
   }
 
   // Intimacy challenges
@@ -592,7 +797,7 @@
         if (at >= 0) done.splice(at, 1); else done.push(i);
         S.put(`challenge_progress:${me}`, 'challenge_progress', { challengeId: def.id, startedAt: active.data.startedAt, done });
       };
-      fill($('activeChallenge'), h('div', { class: 'bg-gradient-to-br from-orange-950/40 via-slate-900 to-slate-900 border border-orange-500/30 rounded-2xl p-4' },
+      fill($('activeChallenge'), h('div', { class: 'bg-gradient-to-br from-orange-950/40 via-slate-900/70 to-slate-900/50 backdrop-blur-md border border-orange-500/30 rounded-2xl p-4' },
         h('div', { class: 'flex justify-between items-baseline mb-3' },
           h('h3', { class: 'text-sm font-semibold text-white' }, def.title),
           h('span', { class: 'text-xs text-orange-300' }, `Day ${dayIdx + 1} of ${def.days}`)),
@@ -608,7 +813,7 @@
                 title: `${who(p)}${mark(p) ? ' did this' : ''}`,
                 disabled: !isMe || i > dayIdx,
                 onclick: () => toggle(i)
-              }, paired() ? (isMe ? 'Me' : '♥') : p);
+              }, isMe && paired() ? 'Me' : initial(p));
             }))
           );
         })),
@@ -618,7 +823,7 @@
       fill($('activeChallenge'), h('p', { class: 'text-xs text-slate-400' }, 'Pick a challenge to do together. Each of you ticks off your own days.'));
     }
     fill($('challengeList'), C.challenges.filter(c => !def || c.id !== def.id).map(c =>
-      h('div', { class: 'bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex justify-between items-center gap-3' },
+      h('div', { class: 'bg-slate-900/50 backdrop-blur-md border border-white/10 rounded-xl p-3 flex justify-between items-center gap-3' },
         h('div', {}, h('p', { class: 'text-sm text-slate-100' }, c.title), h('p', { class: 'text-xs text-slate-500' }, `Starts with: ${c.steps[0]}`)),
         h('button', { class: 'shrink-0 px-3 py-1.5 bg-orange-600 hover:bg-orange-500 rounded-lg text-xs font-medium',
           onclick: () => S.put('challenge:current', 'challenge', { challengeId: c.id, startedAt: new Date().toISOString() }, { keepAuthor: true }) }, def ? 'Switch' : 'Start')
@@ -628,11 +833,11 @@
 
   // ---------- Pairing & settings sheet ----------
 
-  function openSheet() { renderSheet(); $('sheet').classList.remove('hidden'); }
+  function openSheet() { renderSheet(); $('sheet').classList.remove('hidden'); replay($('sheetPanel'), 'anim-in'); }
   function closeSheet() { $('sheet').classList.add('hidden'); }
 
   const btn = (label, onclick, tone) => h('button', {
-    class: 'w-full py-2.5 rounded-xl text-sm font-medium transition ' + (tone === 'ghost' ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : tone === 'danger' ? 'bg-red-900/40 hover:bg-red-900/60 text-red-200' : 'bg-rose-600 hover:bg-rose-500 text-white'),
+    class: 'w-full py-2.5 rounded-xl text-sm font-medium transition ' + (tone === 'ghost' ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : tone === 'danger' ? 'bg-red-900/40 hover:bg-red-900/60 text-red-200' : 'bg-gradient-to-r from-rose-600 to-violet-600 hover:brightness-110 text-white'),
     onclick
   }, label);
 
@@ -642,6 +847,23 @@
     const errorLine = h('p', { class: 'text-xs text-red-400 hidden' });
     const fail = err => { errorLine.textContent = err.message || String(err); errorLine.classList.remove('hidden'); };
 
+    // Names. Paired: each of you sets your own. Demo: both are editable here.
+    const nameField = p => h('input', {
+      maxlength: '24', placeholder: paired() ? 'Your first name' : `Name for partner ${p}`, value: nameOf(p) || '',
+      'aria-label': paired() ? 'Your name' : `Name for partner ${p}`,
+      class: 'w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-rose-500',
+      onchange: e => {
+        const name = e.target.value.trim().slice(0, 24);
+        if (name) S.put(`profile:${p}`, 'profile', { name }); else S.remove(`profile:${p}`);
+      }
+    });
+    parts.push(h('div', { class: 'space-y-2' },
+      h('p', { class: 'font-medium' }, paired() ? 'Your name' : 'Your names'),
+      paired()
+        ? h('div', { class: 'space-y-1' }, nameField(S.me()),
+            h('p', { class: 'text-xs text-slate-400' }, nameOf(other(S.me())) ? `Your partner goes by ${nameOf(other(S.me()))}.` : 'Your partner sets their own name on their phone.'))
+        : h('div', { class: 'grid grid-cols-2 gap-2' }, nameField('A'), nameField('B'))));
+
     if (!S.isConfigured()) {
       parts.push(h('div', { class: 'bg-slate-950/60 border border-slate-800 rounded-xl p-3 text-slate-300 space-y-1' },
         h('p', { class: 'font-medium' }, 'Single-device demo mode'),
@@ -649,7 +871,7 @@
     } else if (!paired()) {
       const codeInput = h('input', { inputmode: 'numeric', maxlength: '6', placeholder: '123456', class: 'flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-lg tracking-[0.4em] text-center focus:outline-none focus:border-rose-500' });
       parts.push(
-        h('div', { class: 'space-y-2' },
+        h('div', { class: 'border-t border-slate-800 pt-4 space-y-2' },
           h('p', { class: 'font-medium' }, 'Start a shared space'),
           h('p', { class: 'text-xs text-slate-400' }, "You'll get a 6-digit code (valid 24 hours) for your partner. Your current answers and notes come with you."),
           btn('Create pairing code', async () => {
@@ -661,13 +883,13 @@
           h('div', { class: 'flex gap-2' }, codeInput,
             h('button', { class: 'px-4 bg-teal-600 hover:bg-teal-500 rounded-xl text-sm font-medium', onclick: async () => {
               if (!/^\d{6}$/.test(codeInput.value.trim())) return fail(new Error('Enter the 6-digit code'));
-              try { await S.joinPair(codeInput.value); syncDailyInput(); renderSheet(); toast("You're connected 💞"); } catch (e) { fail(e); }
+              try { await S.joinPair(codeInput.value); syncDailyInput(); renderSheet(); toast("You're connected"); } catch (e) { fail(e); }
             } }, 'Join'))));
     } else {
       parts.push(h('div', { class: 'bg-slate-950/60 border border-slate-800 rounded-xl p-3 space-y-1' },
-        h('p', { class: 'font-medium' }, S.state.pairCode ? 'Waiting for your partner' : 'Paired 💞'),
+        h('p', { class: 'font-medium' }, S.state.pairCode ? 'Waiting for your partner' : 'Connected'),
         S.state.pairCode ? h('p', { class: 'text-3xl tracking-[0.3em] text-center text-rose-300 py-2 font-semibold' }, S.state.pairCode) : null,
-        S.state.pairCode ? h('p', { class: 'text-xs text-slate-400' }, 'Ask your partner to open UsTwo, tap 💞, and enter this code.') : null,
+        S.state.pairCode ? h('p', { class: 'text-xs text-slate-400' }, 'Ask your partner to open UsTwo, tap the two circles at the top, and enter this code.') : null,
         h('p', { class: 'text-xs text-slate-400' }, `Sync status: ${S.syncStatus}`)));
       parts.push(btn('Unpair this device', () => { if (confirmInline()) { S.unpair(); renderSheet(); } }, 'danger'));
     }
@@ -678,7 +900,7 @@
       h('p', { class: 'font-medium' }, 'Notifications'),
       h('p', { class: 'text-xs text-slate-400' },
         perm === 'unsupported' ? 'This browser does not support notifications.' :
-        perm === 'granted' ? 'On. You\'ll get a gentle nudge when your partner answers, drops a note, or changes their vibe while UsTwo is open in the background.' :
+        perm === 'granted' ? 'On. You\'ll get a gentle nudge when your partner answers, leaves a note, or changes their mood while UsTwo is open in the background.' :
         perm === 'denied' ? 'Blocked in browser settings.' :
         'Get a nudge when your partner answers or drops a note. Message text is never shown on the lock screen.'),
       perm === 'default' ? btn('Enable notifications', async () => { await Notification.requestPermission(); renderSheet(); }, 'ghost') : null));
@@ -705,22 +927,30 @@
   }
 
   const NOTIFY = {
-    answered: () => 'Your partner answered today\'s prompt 🔒 Answer to unlock.',
-    note: () => 'A new note landed in your Love Jar 💌',
-    vibe: e => `Your partner's vibe: ${e.data.text}`,
-    bucket: () => 'New idea on your bucket list 🪣',
-    checkin: () => 'Your partner filled in this week\'s check-in 🗣️',
-    challenge: () => 'A new challenge has started 🔥',
-    prompt: () => 'There\'s a new daily prompt ✨',
+    answered: e => `${who(e.author)} answered tonight's question. Write yours to open it.`,
+    note: e => `${who(e.author)} left you a note`,
+    vibe: e => `${who(e.author)} updated their mood`,
+    bucket: () => 'Something new on your plans list',
+    checkin: e => `${who(e.author)} filled in this week's check-in`,
+    challenge: () => 'A new challenge has started',
+    prompt: () => 'There\'s a new question for tonight',
     // Deliberately vague: these can show on a lock screen.
-    spark: () => 'Something is waiting for you in UsTwo 💗',
-    spark_done: () => 'A new memory was saved 💗'
+    spark: () => 'Something is waiting for you in UsTwo',
+    spark_done: () => 'A new memory was saved',
+    // Only fires when a partner's change creates a new mutual match (see below).
+    spark_wish: () => 'You have a new match in Spark'
   };
 
   S.onRemote((e, prev) => {
     const make = NOTIFY[e.kind];
     if (!make) return;
     if (e.kind === 'bucket' && prev) return; // only new ideas, not edits
+    if (e.kind === 'spark_wish') {
+      // Stay silent unless their change matched something I already want.
+      const mineWant = wishOf(S.me()).want;
+      const before = new Set(prev && !prev.deleted ? (prev.data.want || []) : []);
+      if (!(e.data.want || []).some(id => !before.has(id) && mineWant.includes(id))) return;
+    }
     const msg = make(e);
     toast(msg);
     if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
@@ -766,7 +996,8 @@
 
   // Keep the open sheet's status line fresh without wiping the code input.
   function renderSheetStatus() {
-    if (paired()) renderSheet();
+    const typing = document.activeElement && $('sheet').contains(document.activeElement) && document.activeElement.tagName === 'INPUT';
+    if (paired() && !typing) renderSheet();
   }
 
   S.subscribe(render);
