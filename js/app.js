@@ -71,13 +71,73 @@
   function toast(msg) {
     $('toastText').textContent = msg;
     $('toast').classList.remove('hidden');
+    replay($('toastText'), 'anim-toast');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => $('toast').classList.add('hidden'), 2600);
   }
 
+  // ---------- Motion ----------
+  // The UI re-renders on every change, so animations only replay when the value they follow changes.
+
+  const reduceMotion = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  function replay(el, cls) {
+    if (!el) return;
+    el.classList.remove(cls);
+    void el.offsetWidth; // restart the CSS animation
+    el.classList.add(cls);
+  }
+
+  const seen = {};
+  // True when `value` differs from what we saw last time for `key` (never on the first sighting).
+  function changed(key, value) {
+    const had = Object.prototype.hasOwnProperty.call(seen, key);
+    const was = seen[key];
+    seen[key] = value;
+    return had && was !== value;
+  }
+
+  const BURST_COLOURS = ['#d36f87', '#e49aab', '#dcbf8a', '#b94a66', '#c9a66b', '#a98bc4'];
+  // A little celebration: dots, streaks and hearts flying out from the middle of `el`.
+  function burst(el) {
+    if (!el || reduceMotion()) return;
+    const r = el.getBoundingClientRect();
+    const box = h('div', { class: 'burst', 'aria-hidden': 'true' });
+    box.style.left = `${r.left + r.width / 2}px`;
+    box.style.top = `${r.top + Math.min(r.height / 2, 160)}px`;
+    for (let i = 0; i < 26; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 70 + Math.random() * 110;
+      const colour = BURST_COLOURS[i % BURST_COLOURS.length];
+      const kind = i % 3;
+      let p;
+      if (kind === 2) {
+        p = h('i', {});
+        const NS = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(NS, 'svg');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        const path = document.createElementNS(NS, 'path');
+        path.setAttribute('d', 'M12 21s-7-4.5-9.5-9A5.5 5.5 0 0 1 12 6a5.5 5.5 0 0 1 9.5 6c-2.5 4.5-9.5 9-9.5 9z');
+        path.setAttribute('fill', colour);
+        svg.appendChild(path);
+        p.appendChild(svg);
+      } else {
+        p = h('i', { class: kind === 0 ? 'dot' : 'bar' });
+        p.style.background = colour;
+      }
+      p.style.setProperty('--dx', `${Math.cos(angle) * dist}px`);
+      p.style.setProperty('--dy', `${Math.sin(angle) * dist - 30}px`);
+      p.style.setProperty('--rot', `${Math.round(Math.random() * 540 - 270)}deg`);
+      p.style.animationDelay = `${Math.round(Math.random() * 90)}ms`;
+      box.appendChild(p);
+    }
+    document.body.appendChild(box);
+    setTimeout(() => box.remove(), 1300);
+  }
+
   const chip = (active) => active
-    ? 'shrink-0 px-3 py-1.5 rounded-xl text-xs font-medium bg-rose-600 text-white'
-    : 'shrink-0 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700';
+    ? 'shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium bg-gradient-to-r from-rose-600 to-violet-600 text-white shadow-md shadow-rose-950'
+    : 'shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10';
 
   // ---------- Navigation ----------
 
@@ -116,13 +176,18 @@
   function renderNav() {
     const tab = S.state.ui.tab;
     TABS.forEach(([t]) => $(`tab-${t}`).classList.toggle('hidden', t !== tab));
-    fill($('navBar'), TABS.map(([t, label]) =>
-      h('button', {
-        class: 'flex flex-col items-center gap-1 px-1 ' + (t === tab ? 'text-rose-300' : 'text-slate-500 hover:text-slate-200'),
-        'aria-current': t === tab ? 'page' : null,
+    const switched = changed('tab', tab);
+    fill($('navBar'), TABS.map(([t, label]) => {
+      const active = t === tab;
+      const pill = h('span', { class: 'grid place-items-center w-12 h-8 rounded-full transition-colors duration-300 ' + (active ? 'bg-gradient-to-r from-rose-600/45 to-violet-600/40 text-rose-100' : '') }, icon(t));
+      if (active && switched) replay(pill, 'anim-pop');
+      return h('button', {
+        class: 'flex flex-col items-center gap-0.5 px-0.5 ' + (active ? 'text-rose-200' : 'text-slate-500 hover:text-slate-200'),
+        'aria-current': active ? 'page' : null,
         onclick: () => S.setUi({ tab: t })
-      }, icon(t), h('span', { class: 'text-[10px] font-medium tracking-wider uppercase' }, label))
-    ));
+      }, pill, h('span', { class: 'text-[10px] font-medium tracking-wider uppercase' }, label));
+    }));
+    if (switched) replay($(`tab-${tab}`), 'anim-rise');
   }
 
   // ---------- Header & pulse ----------
@@ -150,11 +215,12 @@
       const v = S.get(`vibe:${p}`);
       $(`vibeLabel${p}`).textContent = who(p);
       $(`status${p}`).textContent = v ? v.data.text : '—';
+      if (changed(`vibe:${p}`, v ? v.data.text : '')) replay($(`status${p}`).parentElement, 'anim-pop');
     });
     const mine = S.get(`vibe:${S.me()}`);
     fill($('vibeButtons'), C.vibes.map(v =>
       h('button', {
-        class: 'shrink-0 px-3 py-1.5 rounded-lg border transition ' + (mine && mine.data.text === v ? 'bg-rose-600/30 border-rose-500/60' : 'bg-slate-800 hover:bg-slate-700 border-slate-700'),
+        class: 'shrink-0 px-3.5 py-1.5 rounded-full border ' + (mine && mine.data.text === v ? 'bg-gradient-to-r from-rose-600/50 to-violet-600/50 border-rose-400/60 text-white' : 'bg-white/5 hover:bg-white/10 border-white/10'),
         onclick: () => S.put(`vibe:${S.me()}`, 'vibe', { text: v })
       }, v)
     ));
@@ -179,6 +245,8 @@
     const badge = $('revealStatusBadge');
     badge.textContent = both ? 'Revealed' : 'Sealed until you both answer';
     badge.className = both ? 'text-xs text-teal-300 font-medium' : 'text-xs text-slate-400';
+    const justRevealed = changed(`reveal:${key}:${me}`, both) && both;
+    if (justRevealed) { replay($(`ansDisplay${other(me)}`), 'anim-reveal'); replay(badge, 'anim-pop'); burst(badge); }
     $('btnLockIn').textContent = mine ? 'Rewrite my answer' : 'Seal my answer';
 
     ['A', 'B'].forEach(x => {
@@ -259,6 +327,7 @@
     const deck = C.decks[deckCategory] || C.decks.deep;
     $('cardCategoryBadge').textContent = deck.label;
     $('cardText').textContent = `"${deck.cards[cardIndex % deck.cards.length]}"`;
+    if (changed('card', `${deckCategory}:${cardIndex}`)) replay($('deckCard'), 'anim-flip');
     fill($('deckCategories'), Object.entries(C.decks).map(([k, d]) =>
       h('button', { class: chip(k === deckCategory), onclick: () => S.setUi({ deckCategory: k, cardIndex: 0 }) }, d.label)
     ));
@@ -268,8 +337,9 @@
 
   function renderJar() {
     const notes = S.all('note');
+    const fresh = changed('topNote', notes[0] ? notes[0].id : '');
     fill($('jarList'), notes.length ? notes.map(n =>
-      h('div', { class: 'bg-slate-900/80 border border-slate-800 p-3.5 rounded-xl' },
+      h('div', { class: 'bg-slate-900/50 backdrop-blur-md border border-white/10 p-3.5 rounded-xl' },
         h('div', { class: 'flex justify-between text-xs text-slate-400 mb-1' },
           h('span', { class: 'font-medium text-teal-400' }, who(n.author)),
           h('span', { class: 'flex gap-3' },
@@ -279,7 +349,8 @@
         ),
         h('p', { class: 'text-sm text-slate-200 whitespace-pre-wrap break-words' }, n.data.text)
       )
-    ) : h('p', { class: 'text-sm text-slate-500 text-center py-6' }, 'The jar is empty. Drop the first note!'));
+    ) : h('p', { class: 'text-sm text-slate-500 text-center py-6' }, 'No notes yet. Leave the first one.'));
+    if (fresh && notes.length) replay($('jarList').firstElementChild, 'anim-in');
   }
 
   function addJarNote() {
@@ -418,7 +489,7 @@
     const body = $('sparkBody');
 
     if (!mine.optIn) {
-      fill(body, h('div', { class: 'bg-slate-900 border border-fuchsia-500/30 rounded-2xl p-5 space-y-3' },
+      fill(body, h('div', { class: 'bg-slate-900/55 backdrop-blur-md border border-fuchsia-500/30 rounded-3xl p-5 space-y-3' },
         h('h3', { class: 'serif text-2xl text-white' }, 'Spark'),
         h('p', { class: 'text-sm text-slate-300' }, 'A position for tonight, picked from both your moods and how horny you each are. Quick and easy on weeknights, bolder on weekends. Plus a private list where you each mark what you want to try, and only your matches are revealed.'),
         h('ul', { class: 'text-xs text-slate-400 space-y-1 list-disc pl-4' },
@@ -431,7 +502,7 @@
       return;
     }
     if (!theirs.optIn) {
-      fill(body, h('div', { class: 'bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3' },
+      fill(body, h('div', { class: 'bg-slate-900/55 backdrop-blur-md border border-white/10 rounded-3xl p-5 space-y-3' },
         h('h3', { class: 'serif text-xl text-white' }, 'Spark is on for you'),
         h('p', { class: 'text-sm text-slate-300' }, paired()
           ? 'It will start once your partner turns it on too. We don\'t send them a reminder, so bring it up when it feels right.'
@@ -470,7 +541,7 @@
       status = h('p', { class: 'text-xs text-slate-400' }, `You said ${myChoice === 'in' ? '"I\'m in"' : '"not tonight"'}. Waiting for ${whoInline(them)}.`);
     } else if (myChoice === 'in' && theirChoice === 'in') {
       status = h('div', { class: 'space-y-2' },
-        h('p', { class: 'text-sm text-fuchsia-200 font-medium' }, 'You both said yes.'),
+        h('p', { 'data-yes': '1', class: 'text-sm text-fuchsia-200 font-medium' }, 'You both said yes.'),
         h('button', { class: 'w-full py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm',
           onclick: () => S.put(`spark_done:${date}`, 'spark_done', { itemId: idea.id, title: idea.title }) }, 'We did it, save the memory'));
     } else {
@@ -478,7 +549,7 @@
     }
 
     const isPosition = idea.kind === 'position';
-    const card = h('div', { class: 'bg-gradient-to-br from-fuchsia-950/50 via-slate-900 to-slate-900 border border-fuchsia-500/30 rounded-3xl p-6 space-y-4 shadow-xl' },
+    const card = h('div', { class: 'glow bg-gradient-to-br from-fuchsia-950/50 via-slate-900/70 to-slate-900/50 backdrop-blur-md border border-fuchsia-500/30 rounded-3xl p-6 space-y-4 shadow-xl' },
       h('div', { class: 'flex justify-between items-baseline gap-2' },
         h('span', { class: 'eyebrow font-semibold text-fuchsia-300' }, isPosition ? `Tonight's position · ${heatLabel(idea.heat)}` : 'Tonight · Closeness'),
         mutual ? h('span', { class: 'text-[11px] text-teal-300' }, 'You both want this') : null),
@@ -497,8 +568,8 @@
         h('p', { class: 'text-xs text-slate-400 leading-relaxed' }, warmup.desc)) : null,
       shared === 'rest' ? h('p', { class: 'text-xs text-amber-300' }, 'One of you is running on empty, so tonight is about closeness only.') : null,
       h('div', { class: 'grid grid-cols-2 gap-2' },
-        h('button', { class: 'py-2.5 rounded-xl text-sm font-medium ' + (myChoice === 'in' ? 'bg-fuchsia-600 text-white ring-2 ring-fuchsia-300' : 'bg-fuchsia-700/80 hover:bg-fuchsia-600 text-white'), onclick: () => respond('in') }, "I'm in"),
-        h('button', { class: 'py-2.5 rounded-xl text-sm font-medium ' + (myChoice === 'pass' ? 'bg-slate-600 text-white ring-2 ring-slate-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'), onclick: () => respond('pass') }, 'Not tonight')),
+        h('button', { class: 'py-3 rounded-full text-sm font-medium ' + (myChoice === 'in' ? 'bg-gradient-to-r from-rose-500 to-violet-500 text-white ring-2 ring-fuchsia-200/70' : 'bg-gradient-to-r from-rose-600 to-violet-600 hover:brightness-110 text-white'), onclick: () => respond('in') }, "I'm in"),
+        h('button', { class: 'py-3 rounded-full text-sm font-medium ' + (myChoice === 'pass' ? 'bg-slate-600 text-white ring-2 ring-slate-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'), onclick: () => respond('pass') }, 'Not tonight')),
       status,
       h('div', { class: 'flex justify-between text-xs pt-1' },
         poolSize > 1 ? h('button', { class: 'text-slate-300 hover:text-white', onclick: () => setPick({ shuffle: shuffle + 1, choose: null }) }, 'Roll again') : h('span', {}),
@@ -506,11 +577,12 @@
     );
 
     const myHeat = C.spark.heats.find(x => x.value === mine.heat);
-    const heatPicker = h('div', { class: 'bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-2' },
+    const heatPicker = h('div', { class: 'bg-slate-900/55 backdrop-blur-md border border-white/10 rounded-3xl p-3 space-y-2' },
       h('p', { class: 'text-xs text-slate-300' }, paired() ? 'How horny are you tonight?' : `How horny is ${who(me)} tonight?`),
       h('div', { class: 'grid grid-cols-3 gap-2' }, C.spark.heats.map(x =>
         h('button', {
-          class: 'rounded-xl px-2 py-2 text-xs border transition ' + (mine.heat === x.value ? 'bg-fuchsia-700 border-fuchsia-400 text-white' : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-fuchsia-500/50'),
+          class: 'rounded-full px-2 py-2 text-xs border ' + (mine.heat === x.value ? 'bg-gradient-to-r from-rose-600 to-violet-600 border-fuchsia-300/60 text-white shadow-lg shadow-fuchsia-950' : 'bg-white/5 border-white/10 text-slate-300 hover:border-fuchsia-500/50'),
+          'aria-pressed': mine.heat === x.value ? 'true' : 'false',
           title: x.hint, onclick: () => setSparkPref({ heat: x.value })
         }, x.label))),
       h('p', { class: 'text-[11px] text-slate-400' }, myHeat ? myHeat.hint + '.' : ''),
@@ -531,7 +603,7 @@
       h('div', {},
         h('h4', { class: 'eyebrow font-semibold text-slate-400' }, 'Positions to try'),
         h('p', { class: 'text-[11px] text-slate-500 mt-1' }, `Mark each one privately. ${paired() ? 'Your partner' : who(them)} only sees a position when you've both said "Want to". "Not for me" keeps it out of tonight's picks without telling them why.`)),
-      matches.length ? h('div', { class: 'bg-slate-900 border border-teal-500/30 rounded-2xl p-3 space-y-2' },
+      matches.length ? h('div', { 'data-matches': '1', class: 'bg-slate-900/55 backdrop-blur-md border border-teal-500/30 rounded-3xl p-3 space-y-2' },
         h('p', { class: 'text-xs text-teal-300' }, `You both want to try ${matches.length === 1 ? 'this' : 'these'}`),
         matches.map(p => h('div', { class: 'flex justify-between items-center gap-2' },
           h('span', { class: 'text-sm text-slate-100' }, p.title),
@@ -540,7 +612,7 @@
       h('div', { class: 'flex gap-2' }, C.spark.heats.map(x =>
         h('button', { class: chip(level === x.value), onclick: () => S.setUi({ sparkLevel: x.value }) }, x.label))),
       h('div', { class: 'space-y-2' }, C.spark.positions.filter(p => p.heat === level).map(p =>
-        h('div', { class: 'bg-slate-900/80 border border-slate-800 rounded-xl p-3 space-y-2' },
+        h('div', { class: 'bg-slate-900/50 backdrop-blur-md border border-white/10 rounded-xl p-3 space-y-2' },
           h('details', {},
             h('summary', { class: 'cursor-pointer list-none' },
               h('p', { class: 'text-sm text-slate-100' }, p.title),
@@ -549,6 +621,13 @@
           h('div', { class: 'flex gap-2' }, mark(p, 'want', 'Want to'), mark(p, 'maybe', 'Maybe'), mark(p, 'no', 'Not for me'))))));
 
     const memories = S.all('spark_done').slice(0, 8);
+    const bothYes = myChoice === 'in' && theirChoice === 'in';
+    const ideaChanged = changed(`sparkIdea:${me}`, idea.id);
+    const yesNow = changed(`sparkYes:${me}:${idea.id}`, bothYes) && bothYes;
+    const prevMatches = seen[`sparkMatches:${me}`];
+    seen[`sparkMatches:${me}`] = matches.length;
+    const newMatch = prevMatches !== undefined && matches.length > prevMatches;
+    const heatChanged = changed(`heat:${me}`, mine.heat);
     fill(body,
       h('div', { class: 'flex flex-wrap gap-2 text-[11px]' },
         h('span', { class: 'px-2 py-0.5 rounded-full border border-fuchsia-500/40 text-fuchsia-200' }, weekend ? 'Weekend night' : 'Weeknight'),
@@ -562,7 +641,7 @@
       h('div', {},
         h('h4', { class: 'eyebrow font-semibold text-slate-400 mb-2' }, 'Our memories'),
         memories.length ? h('div', { class: 'space-y-2' }, memories.map(m =>
-          h('div', { class: 'bg-slate-900/80 border border-slate-800 rounded-xl px-3 py-2 flex justify-between text-sm' },
+          h('div', { class: 'bg-slate-900/50 backdrop-blur-md border border-white/10 rounded-xl px-3 py-2 flex justify-between text-sm' },
             h('span', { class: 'text-slate-200' }, m.data.title),
             h('span', { class: 'text-xs text-slate-500' }, new Date(m.id.split(':')[1] + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })))))
           : h('p', { class: 'text-xs text-slate-500' }, 'Positions you both enjoyed will be saved here.')),
@@ -570,6 +649,10 @@
         (mine.hidden || []).length ? h('button', { class: 'hover:text-slate-300', onclick: () => setSparkPref({ hidden: [] }) }, `Unhide ${(mine.hidden || []).length} you hid`) : h('span', {}),
         h('button', { class: 'hover:text-slate-300', onclick: () => setSparkPref({ optIn: false }) }, 'Turn Spark off'))
     );
+    if (ideaChanged) replay(card, 'anim-flip');
+    if (yesNow) burst(card.querySelector('[data-yes]') || card);
+    if (newMatch) { const box = body.querySelector('[data-matches]'); replay(box, 'anim-pop'); burst(box); }
+    if (heatChanged) replay(heatPicker.querySelector('[aria-pressed="true"]'), 'anim-pop');
   }
 
   // ---------- Rituals ----------
@@ -620,7 +703,7 @@
       class: 'bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-200',
       onchange: ev => updateBucket(e, { plannedFor: ev.target.value || null })
     });
-    return h('div', { class: 'bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex items-start gap-3' },
+    return h('div', { class: 'bg-slate-900/50 backdrop-blur-md border border-white/10 rounded-xl p-3 flex items-start gap-3' },
       h('input', { type: 'checkbox', class: 'mt-1 accent-rose-500', checked: e.data.done, 'aria-label': 'Done', onchange: ev => updateBucket(e, { done: ev.target.checked }) }),
       h('div', { class: 'flex-1 min-w-0' },
         h('p', { class: 'text-sm break-words ' + (e.data.done ? 'line-through text-slate-500' : 'text-slate-100') }, e.data.text),
@@ -675,14 +758,14 @@
     const past = S.all('checkin').filter(e => !e.id.startsWith(`checkin:${week}:`)).slice(0, 8);
     fill($('checkinHistory'), past.length ? past.map(e => {
       const wk = e.id.split(':')[1];
-      return h('details', { class: 'bg-slate-900/80 border border-slate-800 rounded-xl p-3' },
+      return h('details', { class: 'bg-slate-900/50 backdrop-blur-md border border-white/10 rounded-xl p-3' },
         h('summary', { class: 'text-xs text-slate-300 cursor-pointer' }, `${wk} · ${who(e.author)}`),
         checkinCard(e, null));
     }) : h('p', { class: 'text-xs text-slate-500' }, 'Your past check-ins will appear here.'));
   }
 
   function checkinCard(e, title) {
-    return h('div', { class: title ? 'bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2' : 'mt-2 space-y-2' },
+    return h('div', { class: title ? 'bg-slate-900/55 backdrop-blur-md border border-white/10 rounded-3xl p-4 space-y-2' : 'mt-2 space-y-2' },
       title ? h('h4', { class: 'text-sm font-semibold text-teal-300' }, title) : null,
       C.checkinTemplate.filter(f => e.data[f.key]).map(f =>
         h('div', {}, h('p', { class: 'text-[11px] text-slate-400' }, f.label), h('p', { class: 'text-sm text-slate-200 whitespace-pre-wrap break-words' }, e.data[f.key])))
@@ -714,7 +797,7 @@
         if (at >= 0) done.splice(at, 1); else done.push(i);
         S.put(`challenge_progress:${me}`, 'challenge_progress', { challengeId: def.id, startedAt: active.data.startedAt, done });
       };
-      fill($('activeChallenge'), h('div', { class: 'bg-gradient-to-br from-orange-950/40 via-slate-900 to-slate-900 border border-orange-500/30 rounded-2xl p-4' },
+      fill($('activeChallenge'), h('div', { class: 'bg-gradient-to-br from-orange-950/40 via-slate-900/70 to-slate-900/50 backdrop-blur-md border border-orange-500/30 rounded-2xl p-4' },
         h('div', { class: 'flex justify-between items-baseline mb-3' },
           h('h3', { class: 'text-sm font-semibold text-white' }, def.title),
           h('span', { class: 'text-xs text-orange-300' }, `Day ${dayIdx + 1} of ${def.days}`)),
@@ -740,7 +823,7 @@
       fill($('activeChallenge'), h('p', { class: 'text-xs text-slate-400' }, 'Pick a challenge to do together. Each of you ticks off your own days.'));
     }
     fill($('challengeList'), C.challenges.filter(c => !def || c.id !== def.id).map(c =>
-      h('div', { class: 'bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex justify-between items-center gap-3' },
+      h('div', { class: 'bg-slate-900/50 backdrop-blur-md border border-white/10 rounded-xl p-3 flex justify-between items-center gap-3' },
         h('div', {}, h('p', { class: 'text-sm text-slate-100' }, c.title), h('p', { class: 'text-xs text-slate-500' }, `Starts with: ${c.steps[0]}`)),
         h('button', { class: 'shrink-0 px-3 py-1.5 bg-orange-600 hover:bg-orange-500 rounded-lg text-xs font-medium',
           onclick: () => S.put('challenge:current', 'challenge', { challengeId: c.id, startedAt: new Date().toISOString() }, { keepAuthor: true }) }, def ? 'Switch' : 'Start')
@@ -750,11 +833,11 @@
 
   // ---------- Pairing & settings sheet ----------
 
-  function openSheet() { renderSheet(); $('sheet').classList.remove('hidden'); }
+  function openSheet() { renderSheet(); $('sheet').classList.remove('hidden'); replay($('sheetPanel'), 'anim-in'); }
   function closeSheet() { $('sheet').classList.add('hidden'); }
 
   const btn = (label, onclick, tone) => h('button', {
-    class: 'w-full py-2.5 rounded-xl text-sm font-medium transition ' + (tone === 'ghost' ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : tone === 'danger' ? 'bg-red-900/40 hover:bg-red-900/60 text-red-200' : 'bg-rose-600 hover:bg-rose-500 text-white'),
+    class: 'w-full py-2.5 rounded-xl text-sm font-medium transition ' + (tone === 'ghost' ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : tone === 'danger' ? 'bg-red-900/40 hover:bg-red-900/60 text-red-200' : 'bg-gradient-to-r from-rose-600 to-violet-600 hover:brightness-110 text-white'),
     onclick
   }, label);
 
