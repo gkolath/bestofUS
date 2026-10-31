@@ -1,6 +1,6 @@
 // UsTwo visual identity: a late-evening palette of plum-black neutrals, garnet and champagne.
 // Remaps Tailwind's color names so the existing utility classes pick up the new look.
-// Loaded right after the Tailwind Play CDN script (which defines `tailwind`).
+// Not loaded by the page: tailwind.config.js reads it when building css/tailwind.css.
 (function () {
   const theme = {
     colors: {
@@ -22,5 +22,5 @@
     }
   };
   window.USTWO_THEME = theme;
-  if (window.tailwind) window.tailwind.config = { theme: { extend: theme } };
+  // Read by tailwind.config.js at build time.
 })();

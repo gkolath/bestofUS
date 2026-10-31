@@ -16,6 +16,6 @@ window.USTWO_CONFIG = {
   // secrets, never in this file. Set to '' to force the offline template coach.
   COACH_FUNCTION: 'coach',
 
-  // Pinned client library (UMD build). Verify this version against the Supabase docs before production.
-  SUPABASE_JS_URL: 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js'
+  // Pinned client library, served from this app (vendor/) so no third-party CDN sees your users.
+  SUPABASE_JS_URL: 'vendor/supabase-js-2.117.2.js'
 };

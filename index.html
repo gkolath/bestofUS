@@ -6,11 +6,11 @@
   <meta name="theme-color" content="#0d090c">
   <title>UsTwo</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <!-- Tailwind Play CDN is fine for prototyping; switch to a build step before production. -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="js/theme.js"></script>
+  <!-- Privacy: everything is served from this app. No third-party scripts, fonts or trackers. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta name="referrer" content="no-referrer">
+  <link rel="stylesheet" href="css/tailwind.css">
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500;1,600&family=Manrope:wght@400;500;600;700&display=swap');
     body { font-family: 'Manrope', system-ui, sans-serif; letter-spacing: 0.005em; }
     .serif { font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 600; }
     .eyebrow { font-size: 0.68rem; letter-spacing: 0.18em; text-transform: uppercase; }
@@ -260,6 +260,7 @@
 
   <script src="config.js"></script>
   <script src="js/content.js"></script>
+  <script src="js/crypto.js"></script>
   <script src="js/store.js"></script>
   <script src="js/coach.js"></script>
   <script src="js/app.js"></script>
