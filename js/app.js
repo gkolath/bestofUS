@@ -892,6 +892,15 @@
         S.state.pairCode ? h('p', { class: 'text-3xl tracking-[0.3em] text-center text-rose-300 py-2 font-semibold' }, S.state.pairCode) : null,
         S.state.pairCode ? h('p', { class: 'text-xs text-slate-400' }, 'Ask your partner to open UsTwo, tap the two circles at the top, and enter this code.') : null,
         h('p', { class: 'text-xs text-slate-400' }, `Sync status: ${S.syncStatus}`)));
+      if (!S.state.pairCode) {
+        const codeEl = h('p', { class: 'serif text-2xl tracking-[0.15em] text-center text-teal-300 py-1' }, '…');
+        parts.push(h('div', { class: 'bg-slate-950/60 border border-teal-500/30 rounded-xl p-3 space-y-1' },
+          h('p', { class: 'font-medium' }, S.encrypted ? 'End-to-end encrypted' : 'Setting up encryption…'),
+          h('p', { class: 'text-xs text-slate-400' }, 'Only your two phones can read what you share. To be sure nobody is in the middle, check that this security code is the same on both phones:'),
+          codeEl,
+          h('p', { class: 'text-[11px] text-slate-500' }, 'If the codes are different, unpair on both phones and pair again.')));
+        S.safetyCode().then(c => { codeEl.textContent = c || 'Waiting for your partner'; }).catch(() => { codeEl.textContent = 'Unavailable'; });
+      }
       parts.push(btn('Unpair this device', () => { if (confirmInline()) { S.unpair(); renderSheet(); } }, 'danger'));
     }
 
